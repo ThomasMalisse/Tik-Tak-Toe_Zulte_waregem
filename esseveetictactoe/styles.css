@@ -1,0 +1,219 @@
+:root {
+  --green: #1a7a3c;
+  --green-dark: #12602e;
+  --red: #d81f2a;
+  --red-dark: #b0121c;
+  --ink: #17211b;
+  --muted: #6b7a70;
+  --paper: #f7f8f6;
+  --card: #ffffff;
+  --line: #e6eae4;
+  --x: #d81f2a;
+  --o: #1a7a3c;
+
+  /* Verticaal streepmotief van het thuisshirt (rood/groen + witte bies) */
+  --jersey: repeating-linear-gradient(
+    90deg,
+    var(--red) 0 22px,
+    #fff 22px 26px,
+    var(--green) 26px 48px,
+    #fff 48px 52px
+  );
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  min-height: 100vh;
+}
+
+.wrap {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 18px 56px;
+}
+
+/* ---------- Header ---------- */
+.site-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 26px 0 18px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 22px;
+}
+.crest {
+  width: 46px; height: 54px;
+  border-radius: 6px;
+  background: var(--jersey);
+  box-shadow: inset 0 0 0 3px #fff, 0 0 0 1px var(--line);
+  flex: 0 0 auto;
+}
+.crest span { display: none; }
+h1 {
+  font-family: "Anton", "Inter", sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.4px;
+  font-size: clamp(24px, 5.5vw, 34px);
+  margin: 0;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.tagline { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; }
+.tagline strong { color: var(--red); font-weight: 700; }
+
+.how {
+  margin: 0 0 18px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.chip {
+  padding: 1px 7px; border-radius: 4px; color: #fff; font-size: 12.5px;
+  font-weight: 700; white-space: nowrap;
+}
+.chip-x { background: var(--x); }
+.chip-o { background: var(--o); }
+
+/* ---------- Beurt ---------- */
+.turn {
+  text-align: center;
+  font-size: 15px;
+  margin: 0 0 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+}
+.turn-x, .win-x { background: var(--x); }
+.turn-o, .win-o { background: var(--o); }
+.draw { background: #6b7280; }
+
+/* ---------- Raster ---------- */
+.grid-scroll { overflow-x: auto; }
+.grid { min-width: 440px; margin: 0 auto; width: 100%; }
+
+.col-headers,
+.board { display: grid; grid-template-columns: 1.1fr 1fr 1fr 1fr; gap: 6px; }
+.board { margin-top: 6px; }
+
+.head {
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12.5px;
+  line-height: 1.2;
+  padding: 8px 6px;
+  border-radius: 8px;
+  min-height: 52px;
+  color: #fff;
+  background: var(--green);
+}
+.row-head { background: var(--red); }
+.corner {
+  min-height: 52px;
+  border-radius: 8px;
+  background: var(--jersey);
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.cell {
+  position: relative;
+  min-height: 92px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.12s ease, background 0.12s ease;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 6px;
+}
+.cell:hover:not(:disabled) { border-color: var(--green); }
+.cell:disabled { cursor: default; }
+.cell .plus { font-size: 24px; color: #cfd8cd; font-weight: 400; }
+
+.cell.claimed { border-width: 1px; }
+.cell.x { background: #fcf1f2; border-color: var(--x); }
+.cell.o { background: #eef7f0; border-color: var(--o); }
+.cell .mark {
+  font-family: "Anton", sans-serif;
+  font-size: 30px; line-height: 1;
+}
+.cell.x .mark { color: var(--x); }
+.cell.o .mark { color: var(--o); }
+.cell .who { font-size: 11px; font-weight: 700; color: #33443b; text-align: center; }
+
+.cell.win-line { box-shadow: inset 0 0 0 2px currentColor; }
+.cell.win-line.x { color: var(--x); }
+.cell.win-line.o { color: var(--o); }
+
+/* ---------- Knoppen ---------- */
+.controls { display: flex; gap: 8px; justify-content: center; margin: 22px 0 0; flex-wrap: wrap; }
+.btn {
+  font-family: inherit; font-weight: 700; font-size: 14px;
+  padding: 10px 16px; border-radius: 8px; border: 1px solid transparent; cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.btn-primary { background: var(--green); color: #fff; }
+.btn-primary:hover { background: var(--green-dark); }
+.btn-ghost { background: #fff; color: var(--ink); border-color: var(--line); }
+.btn-ghost:hover { border-color: var(--green); }
+
+/* ---------- Spelerspaneel ---------- */
+.players-panel {
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.3s ease;
+  background: var(--card); border-radius: 8px; margin-top: 12px;
+}
+.players-panel.open { max-height: 1400px; border: 1px solid var(--line); }
+.panel-note { padding: 14px 16px 0; margin: 0; font-size: 12.5px; color: var(--muted); }
+.player-list {
+  list-style: none; margin: 8px 0 0; padding: 6px 16px 16px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 16px;
+}
+.player-list li { font-size: 13px; border-bottom: 1px solid #f0f2ef; padding: 5px 0; }
+.player-list .meta { color: var(--muted); font-size: 11.5px; }
+
+.site-foot { text-align: center; color: var(--muted); font-size: 12px; margin-top: 34px; }
+
+/* ---------- Modal ---------- */
+.modal {
+  position: fixed; inset: 0; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(16, 30, 20, 0.5); padding: 18px; z-index: 50;
+}
+.modal.open { display: flex; }
+.modal-box {
+  background: var(--card); border-radius: 12px; padding: 22px;
+  width: 100%; max-width: 400px; box-shadow: 0 20px 50px rgba(0, 25, 12, 0.28);
+  border-top: 4px solid transparent; border-image: var(--jersey) 1;
+}
+.modal-box h3 { margin: 0 0 4px; font-size: 17px; color: var(--ink); }
+.modal-sub { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
+#guess-input {
+  width: 100%; padding: 12px 13px; font-size: 16px; font-family: inherit;
+  border: 1px solid var(--line); border-radius: 8px; outline: none;
+}
+#guess-input:focus { border-color: var(--green); }
+.feedback { min-height: 18px; font-size: 13px; font-weight: 600; margin: 10px 2px 0; }
+.feedback.good { color: var(--green-dark); }
+.feedback.bad { color: var(--red-dark); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+@media (max-width: 520px) {
+  .head { font-size: 11px; min-height: 48px; }
+  .cell { min-height: 80px; }
+  .cell .mark { font-size: 26px; }
+}

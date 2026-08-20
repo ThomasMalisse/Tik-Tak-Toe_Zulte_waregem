@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Essevee Tic-Tac-Toe</title>
+  <meta name="description" content="Boter-kaas-en-eieren met alle spelers die ooit voor SV Zulte Waregem speelden." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23fff'/><rect x='6' width='26' height='100' fill='%23d81f2a'/><rect x='38' width='26' height='100' fill='%231a7a3c'/><rect x='70' width='26' height='100' fill='%23d81f2a'/></svg>" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="site-head">
+      <div class="crest" aria-hidden="true"><span></span></div>
+      <div>
+        <h1>Essevee Tic-Tac-Toe</h1>
+        <p class="tagline">Boter-kaas-en-eieren met spelers van <strong>SV Zulte Waregem</strong></p>
+      </div>
+    </header>
+
+    <p class="how">
+      <b class="chip chip-x">X</b> en <b class="chip chip-o">O</b> claimen om beurten een vakje: noem een Essevee-speler
+      die aan het rij- én kolomcriterium voldoet. Drie op een rij wint.
+    </p>
+
+    <div id="turn" class="turn"></div>
+
+    <div class="grid-scroll">
+      <div class="grid">
+        <div id="col-headers" class="col-headers"></div>
+        <div id="board" class="board"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="new-game" class="btn btn-primary">🔄 Nieuw spel</button>
+      <button id="toggle-players" class="btn btn-ghost">👥 Wie zit in de database?</button>
+    </div>
+
+    <div id="players-panel" class="players-panel">
+      <p class="panel-note">De database bevat <strong id="player-count">0</strong> (oud-)spelers. Namen worden soepel herkend (bv. enkel de achternaam volstaat).</p>
+      <ul id="player-list" class="player-list"></ul>
+    </div>
+
+    <footer class="site-foot">
+      <p>Rood-groen · SV Zulte Waregem</p>
+    </footer>
+  </div>
+
+  <!-- Gok-venster -->
+  <div id="modal" class="modal">
+    <div class="modal-box">
+      <h3 id="modal-title">—</h3>
+      <p id="modal-sub" class="modal-sub">—</p>
+      <input id="guess-input" type="text" placeholder="Naam van de speler…" autocomplete="off" spellcheck="false" />
+      <div id="guess-feedback" class="feedback"></div>
+      <div class="modal-actions">
+        <button id="guess-cancel" class="btn btn-ghost">Annuleren</button>
+        <button id="guess-submit" class="btn btn-primary">Bevestig</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="players.js"></script>
+  <script src="categories.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
