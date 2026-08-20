@@ -1,8 +1,12 @@
 /* =========================================================================
- *  Essevee Tic-Tac-Toe  —  spellogica
- *  Twee spelers (X en O) claimen om beurten een vakje door een SV Zulte
- *  Waregem-speler te noemen die aan het rij- én kolomcriterium voldoet.
+ *  Boter Kaas & Eieren — Belgische editie
+ *  Start -> Overzicht (3 spelmodi) -> [Clubkeuze] -> Spel
+ *  Twee spelers (X en O) claimen om beurten een vakje door een speler te
+ *  noemen die voor de gekozen club(s) speelde én aan het rij-/kolomcriterium
+ *  voldoet.
  * ========================================================================= */
+
+const $ = (sel) => document.querySelector(sel);
 
 /* ---------- Hulpfuncties: naam-normalisatie & matching ---------- */
 
@@ -37,15 +41,6 @@ function matchPlayer(input, allowed) {
   return null;
 }
 
-/* ---------- Rastergeneratie ---------- */
-
-// Bestaat er een speler die aan beide criteria voldoet (en nog niet gebruikt is)?
-function cellSolvable(rowCat, colCat, usedNames) {
-  return PLAYERS.some(
-    (p) => rowCat.test(p) && colCat.test(p) && !usedNames.has(p.name)
-  );
-}
-
 function shuffle(arr) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -55,10 +50,20 @@ function shuffle(arr) {
   return a;
 }
 
+/* ---------- Rastergeneratie ---------- */
+
+// Bestaat er een speler die aan beide criteria voldoet (en nog niet gebruikt is)?
+function cellSolvable(rowCat, colCat, players, usedNames) {
+  return players.some(
+    (p) => rowCat.test(p) && colCat.test(p) && !usedNames.has(p.name)
+  );
+}
+
 // Kies 3 rij- en 3 kolomcategorieën zodat elk vakje minstens één oplossing heeft.
-function generateGrid() {
-  const pool = eligibleCategories(3);
+function generateGrid(players) {
+  const pool = eligibleCategories(players, 3);
   const empty = new Set();
+  if (pool.length < 6) return null;
 
   for (let attempt = 0; attempt < 4000; attempt++) {
     const pick = shuffle(pool).slice(0, 6);
@@ -68,20 +73,21 @@ function generateGrid() {
     let ok = true;
     for (const r of rows) {
       for (const c of cols) {
-        // Twee criteria van dezelfde "soort" snijden vaak nooit
-        // (een speler heeft één positie/nationaliteit) -> cellSolvable vangt dat op.
-        if (!cellSolvable(r, c, empty)) { ok = false; break; }
+        if (!cellSolvable(r, c, players, empty)) { ok = false; break; }
       }
       if (!ok) break;
     }
     if (ok) return { rows, cols };
   }
-  return null; // zou vrijwel nooit gebeuren
+  return null; // te weinig data voor een oplosbaar raster
 }
 
 /* ---------- Spelstatus ---------- */
 
 const state = {
+  mode: null,        // "essevee" | "club" | "belgium"
+  clubIds: [],        // 1 club, of 2 bij "Heel België"
+  players: [],         // actieve spelerspool voor dit potje
   rows: [],
   cols: [],
   board: [],       // 9 cellen: null of { player: "X"/"O", name: "Speler" }
@@ -89,6 +95,8 @@ const state = {
   usedNames: new Set(),
   finished: false,
   winner: null,    // "X" | "O" | "draw" | null
+  playable: true,  // false als er geen oplosbaar raster gemaakt kon worden
+  score: { X: 0, O: 0, draw: 0 },
 };
 
 const WINNING_LINES = [
@@ -112,23 +120,110 @@ function checkWinner() {
   return null;
 }
 
+/* ---------- Thema (clubkleuren toepassen) ---------- */
+
+function applyTheme(colors) {
+  document.documentElement.style.setProperty("--gc1", colors[0]);
+  document.documentElement.style.setProperty("--gc2", colors[1]);
+}
+
+/* ---------- Potje starten ---------- */
+
+function headerInfoFor(mode, clubIds) {
+  if (mode === "essevee") {
+    const club = clubById("zulte-waregem");
+    return { title: club.name, eyebrow: "Boter kaas & eieren", colors: club.colors };
+  }
+  if (mode === "club") {
+    const club = clubById(clubIds[0]);
+    return { title: club.name, eyebrow: "Boter kaas & eieren", colors: club.colors };
+  }
+  // belgium
+  const a = clubById(clubIds[0]);
+  const b = clubById(clubIds[1]);
+  return { title: `${a.name} vs ${b.name}`, eyebrow: "Belgische clash", colors: [a.colors[0], b.colors[0]] };
+}
+
+function startGame(mode, clubIds) {
+  state.mode = mode;
+  state.clubIds = clubIds;
+  state.players = clubIds.length === 1
+    ? rosterFor(clubIds[0])
+    : dedupePlayers([...rosterFor(clubIds[0]), ...rosterFor(clubIds[1])]);
+
+  const info = headerInfoFor(mode, clubIds);
+  applyTheme(info.colors);
+  $("#game-eyebrow").textContent = info.eyebrow;
+  $("#game-title").textContent = info.title;
+
+  newGame();
+  showScreen("game");
+}
+
+function dedupePlayers(players) {
+  const seen = new Set();
+  return players.filter((p) => {
+    if (seen.has(p.name)) return false;
+    seen.add(p.name);
+    return true;
+  });
+}
+
 function newGame() {
-  const grid = generateGrid();
-  state.rows = grid.rows;
-  state.cols = grid.cols;
+  const grid = generateGrid(state.players);
   state.board = new Array(9).fill(null);
   state.current = "X";
   state.usedNames = new Set();
   state.finished = false;
   state.winner = null;
+
+  if (!grid) {
+    state.playable = false;
+    state.rows = [];
+    state.cols = [];
+  } else {
+    state.playable = true;
+    state.rows = grid.rows;
+    state.cols = grid.cols;
+  }
   render();
+}
+
+function resetScore() {
+  state.score = { X: 0, O: 0, draw: 0 };
+  renderScoreboard();
 }
 
 /* ---------- Rendering ---------- */
 
-const $ = (sel) => document.querySelector(sel);
+function renderScoreboard() {
+  $("#score-x").textContent = state.score.X;
+  $("#score-o").textContent = state.score.O;
+  $("#score-draw").textContent = state.score.draw;
+}
 
 function render() {
+  const boardWrap = $("#board-wrap");
+
+  if (!state.playable) {
+    boardWrap.innerHTML = `
+      <div class="empty-state">
+        <p>Nog geen spelers in de database voor deze club(s).</p>
+        <p class="empty-hint">Voeg spelers toe in <code>players.js</code> om dit potje speelbaar te maken.</p>
+      </div>`;
+    $("#turn").innerHTML = "";
+    renderScoreboard();
+    return;
+  }
+
+  boardWrap.innerHTML = `
+    <div class="grid-scroll">
+      <div class="grid">
+        <div id="col-headers" class="col-headers"></div>
+        <div id="board" class="board"></div>
+      </div>
+    </div>`;
+
   // Kolomkoppen
   const colHead = $("#col-headers");
   colHead.innerHTML = '<div class="corner"></div>' +
@@ -157,6 +252,11 @@ function render() {
     }
   }
 
+  boardEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".cell");
+    if (btn && !btn.disabled) openGuess(Number(btn.dataset.idx));
+  });
+
   // Beurt / status
   const turnEl = $("#turn");
   if (state.finished) {
@@ -179,6 +279,8 @@ function render() {
       });
     }
   }
+
+  renderScoreboard();
 }
 
 /* ---------- Interactie: een vakje spelen ---------- */
@@ -191,7 +293,7 @@ function openGuess(idx) {
   const r = Math.floor(idx / 3);
   const c = idx % 3;
   $("#modal-title").textContent = `${state.rows[r].label}  ✕  ${state.cols[c].label}`;
-  $("#modal-sub").textContent = `Speler ${state.current} — noem een SV Zulte Waregem-speler die aan beide voldoet`;
+  $("#modal-sub").textContent = `Speler ${state.current} — noem een speler die aan beide voldoet`;
   $("#guess-input").value = "";
   $("#guess-feedback").textContent = "";
   $("#guess-feedback").className = "feedback";
@@ -213,12 +315,12 @@ function submitGuess() {
   const colCat = state.cols[c];
 
   // Toegestane spelers voor dit vakje, minus de reeds gebruikte
-  const allowed = PLAYERS.filter(
+  const allowed = state.players.filter(
     (p) => rowCat.test(p) && colCat.test(p) && !state.usedNames.has(p.name)
   );
 
   const val = $("#guess-input").value;
-  const match = matchPlayer(val, PLAYERS.filter((p) => !state.usedNames.has(p.name)));
+  const match = matchPlayer(val, state.players.filter((p) => !state.usedNames.has(p.name)));
 
   const fb = $("#guess-feedback");
 
@@ -238,7 +340,7 @@ function submitGuess() {
     fb.className = "feedback good";
     setTimeout(() => {
       closeGuess();
-      finishTurn(true);
+      finishTurn();
     }, 650);
   } else {
     fb.textContent = `✖ ${match.name} voldoet niet aan dit vakje. Beurt gaat over.`;
@@ -250,16 +352,17 @@ function submitGuess() {
 function passTurnAfterWrong() {
   setTimeout(() => {
     closeGuess();
-    finishTurn(false);
+    finishTurn();
   }, 900);
 }
 
 // Na een beurt: winnaar checken en van speler wisselen.
-function finishTurn(claimed) {
+function finishTurn() {
   const res = checkWinner();
   if (res) {
     state.finished = true;
     state.winner = res.player;
+    state.score[res.player]++;
     render();
     return;
   }
@@ -272,25 +375,77 @@ function finishTurn(claimed) {
 
 function renderPlayerList() {
   const list = $("#player-list");
-  const sorted = [...PLAYERS].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = [...state.players].sort((a, b) => a.name.localeCompare(b.name));
   list.innerHTML = sorted
     .map((p) => `<li><strong>${p.name}</strong> <span class="meta">${POSITION_LABELS[p.pos]} · ${p.nat}</span></li>`)
     .join("");
-  $("#player-count").textContent = PLAYERS.length;
+  $("#player-count").textContent = state.players.length;
+}
+
+/* ---------- Scherm-navigatie ---------- */
+
+function showScreen(name) {
+  document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
+  $("#screen-" + name).classList.add("active");
+  window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+}
+
+/* ---------- Clubkeuze-grid ---------- */
+
+function renderClubGrid() {
+  const grid = $("#club-grid");
+  grid.innerHTML = CLUBS.map((club) => `
+    <button class="club-card" data-club="${club.id}">
+      <span class="swatch-row">
+        <span class="swatch" style="background:${club.colors[0]}"></span>
+        <span class="swatch" style="background:${club.colors[1]}"></span>
+      </span>
+      <span class="club-name">${club.name}</span>
+    </button>
+  `).join("");
 }
 
 /* ---------- Event-koppeling ---------- */
 
 document.addEventListener("DOMContentLoaded", () => {
-  renderPlayerList();
-  newGame();
+  renderClubGrid();
+  showScreen("start");
 
-  $("#board").addEventListener("click", (e) => {
-    const btn = e.target.closest(".cell");
-    if (btn && !btn.disabled) openGuess(Number(btn.dataset.idx));
+  // Start -> Overzicht
+  $("#go-overview").addEventListener("click", () => showScreen("overview"));
+  $("#back-to-start").addEventListener("click", (e) => { e.preventDefault(); showScreen("start"); });
+
+  // Overzicht -> spelmodus kiezen
+  document.querySelectorAll(".mode-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const mode = card.dataset.mode;
+      if (mode === "essevee") {
+        resetScore();
+        startGame("essevee", ["zulte-waregem"]);
+      } else if (mode === "club") {
+        showScreen("clubs");
+      } else if (mode === "belgium") {
+        const shuffled = shuffle(CLUBS.map((c) => c.id));
+        resetScore();
+        startGame("belgium", [shuffled[0], shuffled[1]]);
+      }
+    });
   });
 
+  // Clubkeuze -> spel
+  $("#club-grid").addEventListener("click", (e) => {
+    const btn = e.target.closest(".club-card");
+    if (!btn) return;
+    resetScore();
+    startGame("club", [btn.dataset.club]);
+  });
+  $("#back-to-overview").addEventListener("click", (e) => { e.preventDefault(); showScreen("overview"); });
+
+  // Spelscherm
   $("#new-game").addEventListener("click", newGame);
+  $("#reset-score").addEventListener("click", resetScore);
+  $("#switch-team").addEventListener("click", () => showScreen("overview"));
+
   $("#guess-submit").addEventListener("click", submitGuess);
   $("#guess-cancel").addEventListener("click", closeGuess);
   $("#guess-input").addEventListener("keydown", (e) => {
@@ -302,6 +457,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   $("#toggle-players").addEventListener("click", () => {
+    renderPlayerList();
     $("#players-panel").classList.toggle("open");
   });
 });

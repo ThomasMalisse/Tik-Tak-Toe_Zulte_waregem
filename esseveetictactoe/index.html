@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Essevee Tic-Tac-Toe</title>
-  <meta name="description" content="Boter-kaas-en-eieren met alle spelers die ooit voor SV Zulte Waregem speelden." />
+  <title>Boter Kaas &amp; Eieren — Belgische editie</title>
+  <meta name="description" content="Boter-kaas-en-eieren met alle spelers van je favoriete Belgische club." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
@@ -12,43 +12,125 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23fff'/><rect x='6' width='26' height='100' fill='%23d81f2a'/><rect x='38' width='26' height='100' fill='%231a7a3c'/><rect x='70' width='26' height='100' fill='%23d81f2a'/></svg>" />
 </head>
 <body>
-  <div class="wrap">
-    <header class="site-head">
-      <div class="crest" aria-hidden="true"><span></span></div>
-      <div>
-        <h1>Essevee Tic-Tac-Toe</h1>
-        <p class="tagline">Boter-kaas-en-eieren met spelers van <strong>SV Zulte Waregem</strong></p>
+
+  <!-- ============ START ============ -->
+  <section id="screen-start" class="screen">
+    <div class="s-center">
+      <div class="dash-pair"><span class="dash dash-red"></span><span class="dash dash-green"></span></div>
+      <p class="eyebrow">Belgische editie</p>
+      <h1 class="mega-title">Boter Kaas<br />&amp; Eieren</h1>
+      <p class="s-sub">Kies je ploeg en zet drie op een rij in de clubkleuren.</p>
+      <button id="go-overview" class="btn-pill">Overzicht</button>
+    </div>
+  </section>
+
+  <!-- ============ OVERZICHT ============ -->
+  <section id="screen-overview" class="screen">
+    <div class="s-center">
+      <p class="eyebrow">Overzicht</p>
+      <h1 class="mega-title mega-title-sm">Kies je spel</h1>
+
+      <div class="mode-cards">
+        <button class="mode-card mode-light" data-mode="essevee">
+          <span class="swatch-row">
+            <span class="swatch" style="background:#d81f2a"></span>
+            <span class="swatch" style="background:#1a7a3c"></span>
+          </span>
+          <span class="mode-name">Zulte Waregem</span>
+          <span class="mode-desc">Rood tegen groen — de klassieker.</span>
+        </button>
+
+        <button class="mode-card mode-dark" data-mode="club">
+          <span class="swatch-row swatch-row-5">
+            <span class="swatch" style="background:#d81f2a"></span>
+            <span class="swatch" style="background:#0f56a3"></span>
+            <span class="swatch" style="background:#6f2c91"></span>
+            <span class="swatch" style="background:#f0b90b"></span>
+            <span class="swatch" style="background:#1a7a3c"></span>
+          </span>
+          <span class="mode-name">Ploegen België</span>
+          <span class="mode-desc">Speel in de kleuren van elke club.</span>
+        </button>
+
+        <button class="mode-card mode-light" data-mode="belgium">
+          <span class="swatch-row swatch-row-5 two-rows">
+            <span class="swatch" style="background:#d81f2a"></span>
+            <span class="swatch" style="background:#0f56a3"></span>
+            <span class="swatch" style="background:#6f2c91"></span>
+            <span class="swatch" style="background:#f0b90b"></span>
+            <span class="swatch" style="background:#1a7a3c"></span>
+            <span class="swatch" style="background:#0c3f91"></span>
+            <span class="swatch" style="background:#111111"></span>
+            <span class="swatch" style="background:#4fb8e8"></span>
+          </span>
+          <span class="mode-name">Heel België</span>
+          <span class="mode-desc">Willekeurige clash: twee clubs tegen elkaar.</span>
+        </button>
       </div>
-    </header>
 
-    <p class="how">
-      <b class="chip chip-x">X</b> en <b class="chip chip-o">O</b> claimen om beurten een vakje: noem een Essevee-speler
-      die aan het rij- én kolomcriterium voldoet. Drie op een rij wint.
-    </p>
+      <a href="#" id="back-to-start" class="back-link">← Terug</a>
+    </div>
+  </section>
 
-    <div id="turn" class="turn"></div>
+  <!-- ============ CLUBKEUZE ============ -->
+  <section id="screen-clubs" class="screen">
+    <div class="s-center">
+      <p class="eyebrow">Ploegen België</p>
+      <h1 class="mega-title mega-title-sm">Kies een club</h1>
 
-    <div class="grid-scroll">
-      <div class="grid">
-        <div id="col-headers" class="col-headers"></div>
-        <div id="board" class="board"></div>
+      <div id="club-grid" class="club-grid"></div>
+
+      <a href="#" id="back-to-overview" class="back-link">← Terug</a>
+    </div>
+  </section>
+
+  <!-- ============ SPEL ============ -->
+  <section id="screen-game" class="screen">
+    <div class="wrap">
+      <header class="game-head">
+        <div class="dash-pair"><span class="dash" style="background:var(--gc1)"></span><span class="dash" style="background:var(--gc2)"></span></div>
+        <p id="game-eyebrow" class="eyebrow">Boter kaas &amp; eieren</p>
+        <h1 id="game-title" class="mega-title mega-title-game">—</h1>
+      </header>
+
+      <div class="scoreboard">
+        <div class="score-box score-x">
+          <span class="score-mark">X</span>
+          <span class="score-num" id="score-x">0</span>
+          <span class="score-label">Speler 1</span>
+        </div>
+        <div class="score-box score-draw">
+          <span class="score-label-top">Gelijk</span>
+          <span class="score-num" id="score-draw">0</span>
+        </div>
+        <div class="score-box score-o">
+          <span class="score-mark">O</span>
+          <span class="score-num" id="score-o">0</span>
+          <span class="score-label">Speler 2</span>
+        </div>
       </div>
-    </div>
 
-    <div class="controls">
-      <button id="new-game" class="btn btn-primary">🔄 Nieuw spel</button>
-      <button id="toggle-players" class="btn btn-ghost">👥 Wie zit in de database?</button>
-    </div>
+      <div id="turn" class="turn"></div>
 
-    <div id="players-panel" class="players-panel">
-      <p class="panel-note">De database bevat <strong id="player-count">0</strong> (oud-)spelers. Namen worden soepel herkend (bv. enkel de achternaam volstaat).</p>
-      <ul id="player-list" class="player-list"></ul>
-    </div>
+      <div id="board-wrap"></div>
 
-    <footer class="site-foot">
-      <p>Rood-groen · SV Zulte Waregem</p>
-    </footer>
-  </div>
+      <div class="controls">
+        <button id="new-game" class="btn btn-primary">🔄 Nieuw potje</button>
+        <button id="reset-score" class="btn btn-ghost">♻️ Reset</button>
+        <button id="switch-team" class="btn btn-ghost">🔁 Ploeg wisselen</button>
+        <button id="toggle-players" class="btn btn-ghost">👥 Wie zit in de database?</button>
+      </div>
+
+      <div id="players-panel" class="players-panel">
+        <p class="panel-note">Deze pool bevat <strong id="player-count">0</strong> (oud-)spelers. Namen worden soepel herkend (bv. enkel de achternaam volstaat).</p>
+        <ul id="player-list" class="player-list"></ul>
+      </div>
+
+      <footer class="site-foot">
+        <p>Boter Kaas &amp; Eieren · Belgische editie</p>
+      </footer>
+    </div>
+  </section>
 
   <!-- Gok-venster -->
   <div id="modal" class="modal">

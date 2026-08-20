@@ -2,6 +2,10 @@
  * Categorieën (criteria) voor het raster.
  * Elke categorie heeft een label (getoond op het bord) en een test(speler)
  * die true geeft wanneer die speler aan het criterium voldoet.
+ *
+ * Generiek gemaakt: de categorieën worden opgebouwd uit een gegeven
+ * spelerspool (de roster van de gekozen club, of de samengevoegde roster
+ * van twee clubs bij "Heel België"), in plaats van één vaste database.
  */
 
 const POSITION_LABELS = {
@@ -11,7 +15,7 @@ const POSITION_LABELS = {
   FWD: "Aanvaller",
 };
 
-function buildCategories() {
+function buildCategories(players) {
   const cats = [];
 
   // Positie-criteria
@@ -24,8 +28,8 @@ function buildCategories() {
     });
   });
 
-  // Nationaliteit-criteria (voor elke nationaliteit in de database)
-  const nats = [...new Set(PLAYERS.map((p) => p.nat))];
+  // Nationaliteit-criteria (voor elke nationaliteit in de pool)
+  const nats = [...new Set(players.map((p) => p.nat))];
   nats.forEach((nat) => {
     cats.push({
       id: "nat:" + nat,
@@ -36,7 +40,8 @@ function buildCategories() {
   });
 
   // Club-criteria ("speelde ook voor ...")
-  CLUB_VOCAB.forEach((club) => {
+  const clubNames = [...new Set(players.flatMap((p) => p.clubs))];
+  clubNames.forEach((club) => {
     cats.push({
       id: "club:" + club,
       label: "Ook bij " + club,
@@ -48,17 +53,17 @@ function buildCategories() {
   return cats;
 }
 
-const ALL_CATEGORIES = buildCategories();
-
-/* Spelers die aan een categorie voldoen. */
-function playersForCategory(cat) {
-  return PLAYERS.filter((p) => cat.test(p));
+/* Spelers uit een pool die aan een categorie voldoen. */
+function playersForCategory(cat, players) {
+  return players.filter((p) => cat.test(p));
 }
 
 /*
  * Enkel categorieën met genoeg spelers zijn "eligible" om als as van het
  * raster te dienen. Zo blijven de rasters eerlijk en oplosbaar.
  */
-function eligibleCategories(minPlayers = 3) {
-  return ALL_CATEGORIES.filter((c) => playersForCategory(c).length >= minPlayers);
+function eligibleCategories(players, minPlayers = 3) {
+  return buildCategories(players).filter(
+    (c) => playersForCategory(c, players).length >= minPlayers
+  );
 }
