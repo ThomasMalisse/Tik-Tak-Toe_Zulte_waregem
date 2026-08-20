@@ -25,30 +25,7 @@ body {
   margin: 0;
   font-family: "Inter", system-ui, sans-serif;
   color: var(--ink);
-  background: var(--cream);
   min-height: 100vh;
-}
-
-/* ---------- Schermen ---------- */
-.screen {
-  display: none;
-  min-height: 100vh;
-  padding: 0 18px 60px;
-}
-.screen.active { display: flex; flex-direction: column; align-items: center; }
-
-.s-center {
-  max-width: 640px;
-  width: 100%;
-  margin: 0 auto;
-  padding-top: 9vh;
-  text-align: center;
-}
-
-/* Startscherm: zachte verticale streepjesachtergrond, verticaal gecentreerd */
-#screen-start {
-  width: 100%;
-  justify-content: center;
   background: repeating-linear-gradient(
     90deg,
     #efe8d2 0px, #efe8d2 130px,
@@ -56,7 +33,21 @@ body {
     #cad0ac 260px, #cad0ac 390px
   );
 }
-#screen-start .s-center { padding-top: 0; }
+
+/* ---------- Schermen ---------- */
+.screen {
+  display: none;
+  min-height: 100vh;
+  padding: 40px 18px 60px;
+}
+.screen.active { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+.s-center {
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  text-align: center;
+}
 
 /* ---------- Herbruikbare hero-stukjes ---------- */
 .dash-pair { display: flex; gap: 6px; justify-content: center; margin-bottom: 16px; }
