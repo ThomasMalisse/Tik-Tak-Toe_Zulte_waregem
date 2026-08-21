@@ -1105,11 +1105,13 @@ async function startBotGame(clubIds) {
  * Eén scherm voor twee dingen: een code invullen om mee te doen, en wachten
  * tot je tegenstander binnenkomt nadat jij een potje aanmaakte.
  */
+/*
+ * Dit scherm doet nog maar één ding: wachten tot je tegenstander binnenkomt,
+ * met de code en de deelbare link erbij. Meedoen gebeurt op het overzicht.
+ */
 function showOnlineScreen(mode) {
   $("#online-unavailable").style.display = ONLINE_ENABLED ? "none" : "";
-  $("#online-setup").style.display = ONLINE_ENABLED && mode !== "waiting" ? "" : "none";
-  $("#online-waiting").style.display = mode === "waiting" ? "" : "none";
-  $("#online-feedback").textContent = "";
+  $("#online-waiting").style.display = ONLINE_ENABLED && mode === "waiting" ? "" : "none";
   showScreen("online");
 }
 
@@ -1155,12 +1157,17 @@ async function createOnlineGame(clubIds, wantedCode) {
 }
 
 async function joinOnlineGame(code) {
-  onlineFeedback("Meedoen…", true);
+  const note = $("#overview-join-note");
+  note.textContent = "Meedoen…";
+  note.className = "feedback";
   try {
     const record = await onlineJoin(code);
+    note.textContent = "";
     await startOnlineGame(record);
   } catch (err) {
-    onlineFeedback(err.message, false);
+    note.textContent = err.message;
+    note.className = "feedback bad";
+    showScreen("overview");
   }
 }
 
@@ -1190,8 +1197,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         state.pendingMode = "online";
         const shuffled = shuffle(CLUBS.map((c) => c.id));
         createOnlineGame([shuffled[0], shuffled[1]]);
-      } else if (mode === "join") {
-        showOnlineScreen();
       }
     });
   });
@@ -1211,9 +1216,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     showScreen("overview");
   });
 
-  $("#online-join").addEventListener("click", () => joinOnlineGame($("#online-code").value));
-  $("#online-code").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") joinOnlineGame($("#online-code").value);
+  // Meedoen kan rechtstreeks vanaf het overzicht.
+  const doeMee = () => {
+    const note = $("#overview-join-note");
+    if (!ONLINE_ENABLED) {
+      note.textContent = "Online spelen is nog niet ingesteld — zie config.js.";
+      note.className = "feedback bad";
+      return;
+    }
+    note.textContent = "";
+    joinOnlineGame($("#overview-code").value);
+  };
+  $("#overview-join").addEventListener("click", doeMee);
+  $("#overview-code").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") doeMee();
   });
   // Tabblad weer actief? Meteen de laatste stand ophalen — tijdens het slapen
   // kunnen er berichten gemist zijn.
@@ -1297,11 +1313,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // Binnengekomen via een uitnodigingslink? Dan meteen meedoen.
+  // Binnengekomen via een uitnodigingslink? Dan meteen meedoen. Lukt dat niet
+  // (potje vol of verlopen), dan land je op het overzicht met de reden erbij,
+  // en staat de code al ingevuld om het opnieuw te proberen.
   const invite = ONLINE_ENABLED ? onlineCodeFromUrl() : null;
   if (invite) {
-    showOnlineScreen();
-    $("#online-code").value = invite;
+    showScreen("overview");
+    $("#overview-code").value = invite;
     joinOnlineGame(invite);
   }
 });

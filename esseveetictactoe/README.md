@@ -13,8 +13,10 @@ Op het overzicht kies je uit vier dingen:
 |---|---|
 | **Ploegen België** | Kies een club. Je krijgt een code om iemand uit te nodigen. |
 | **Heel België** | Willekeurige clash tussen twee clubs, ook met code. |
-| **Meedoen** | Kreeg je een code of een link? Vul hem hier in. |
 | **Tegen de bot** | Alleen spelen tegen de computer. |
+
+Onder die drie staat **Meedoen met code**: kreeg je een code of een link van
+iemand, dan vul je hem daar in. Via een link gebeurt dat vanzelf.
 
 ### Met z'n tweeën (online)
 

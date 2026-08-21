@@ -129,6 +129,23 @@ body {
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 .mode-card:hover { transform: translateY(-3px); }
+
+/* Meedoen met een code: volle breedte onder de drie kaarten */
+.join-bar { margin: 0 0 30px; text-align: left; }
+.join-title {
+  font-family: "Anton", sans-serif; font-size: 15px; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--ink); margin: 0 0 10px;
+}
+.join-row { display: flex; gap: 10px; }
+.join-row input {
+  flex: 1; min-width: 0; padding: 14px 16px; font-size: 16px; font-family: inherit;
+  border: 1px solid var(--line); border-radius: 12px; outline: none;
+  background: var(--card); text-transform: uppercase; letter-spacing: 1px;
+}
+.join-row input:focus { border-color: var(--gc2); }
+.join-row .btn { border-radius: 12px; padding: 14px 22px; }
+.join-bar .feedback { margin: 8px 2px 0; }
+@media (max-width: 640px) { .join-row { flex-direction: column; } }
 .mode-light { background: var(--card); box-shadow: 0 6px 18px rgba(28, 28, 26, 0.08); }
 .mode-dark { background: var(--card-dark); color: #fff; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3); }
 .mode-dark .mode-desc { color: #c9c9c3; }

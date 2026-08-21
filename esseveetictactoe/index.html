@@ -58,15 +58,6 @@
           <span class="mode-desc">Willekeurige clash tussen twee clubs, met code.</span>
         </button>
 
-        <button class="mode-card mode-dark" data-mode="join">
-          <span class="swatch-row">
-            <span class="swatch sw-green"></span>
-            <span class="swatch sw-yellow"></span>
-          </span>
-          <span class="mode-name">Meedoen</span>
-          <span class="mode-desc">Kreeg je een code of een link? Vul hem hier in.</span>
-        </button>
-
         <button class="mode-card mode-light" data-mode="bot">
           <span class="swatch-row">
             <span class="swatch sw-red"></span>
@@ -75,6 +66,16 @@
           <span class="mode-name">Tegen de bot</span>
           <span class="mode-desc">Alleen spelen. Jij noemt een speler, de bot antwoordt.</span>
         </button>
+      </div>
+
+      <div class="join-bar">
+        <h2 class="join-title">Meedoen met code</h2>
+        <div class="join-row">
+          <input id="overview-code" type="text" placeholder="ESSV-XXXXX"
+                 autocomplete="off" spellcheck="false" maxlength="16" />
+          <button id="overview-join" class="btn btn-primary">Meedoen</button>
+        </div>
+        <p id="overview-join-note" class="feedback"></p>
       </div>
 
       <a href="#" id="back-to-start" class="back-link">← Terug</a>
@@ -106,19 +107,6 @@
           <code>supabase/schema.sql</code> in de SQL Editor van je project.</p>
       </div>
 
-      <div id="online-setup" class="online-panel">
-        <div class="online-block">
-          <h3>Doe mee met een code</h3>
-          <div class="online-join">
-            <input id="online-code" type="text" placeholder="ESSV-XXXXX"
-                   autocomplete="off" spellcheck="false" maxlength="16" />
-            <button id="online-join" class="btn btn-primary">Meedoen</button>
-          </div>
-        </div>
-
-        <div id="online-feedback" class="feedback"></div>
-      </div>
-
       <div id="online-waiting" class="online-panel">
         <h3>Wachten op je tegenstander</h3>
         <p class="online-code-label">Deel deze code:</p>
@@ -129,6 +117,8 @@
         </div>
         <p id="online-copy-note" class="feedback"></p>
       </div>
+
+      <p id="online-feedback" class="feedback"></p>
 
       <a href="#" id="back-to-overview-2" class="back-link">← Terug</a>
     </div>
