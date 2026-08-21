@@ -230,6 +230,7 @@ async function startGame(mode, clubIds) {
   applyTheme(info.colors);
   $("#game-eyebrow").textContent = info.eyebrow;
   $("#game-title").textContent = info.title;
+  renderGameKits(clubIds);
   showScreen("game");
 
   // De rosters staan per club in data/; die van dit potje halen we nu op.
@@ -759,17 +760,55 @@ function showScreen(name) {
 
 /* ---------- Clubkeuze-grid ---------- */
 
+/*
+ * Clubmarkering: een shirt in de twee kleuren van de ploeg, met een witte
+ * omtrek. Bewust geen clubwapens — die zijn merk- en auteursrechtelijk
+ * beschermd en mogen hier niet mee de wereld in. Kleuren zijn dat niet, en
+ * ze stonden al in data/clubs.json.
+ */
+const KIT_PATH = "M18 5 L22 4 C24 7.5 24 7.5 26 4 L30 5 L44 11 L40 21 " +
+                 "L34 18.5 L34 44 L14 44 L14 18.5 L8 21 L4 11 Z";
+const KIT_STRIPES = 5;
+
+// Alleen echte hex-kleuren doorlaten; de rest gaat rechtstreeks in een
+// style-attribuut van de SVG.
+function safeColor(c) {
+  return /^#[0-9a-f]{3,8}$/i.test(String(c)) ? c : "#888888";
+}
+
+function clubKit(club, size = 44) {
+  const id = "kit-" + club.id;
+  const a = safeColor(club.colors[0]);
+  const b = safeColor(club.colors[1]);
+  const w = 48 / KIT_STRIPES;
+  const bars = Array.from({ length: KIT_STRIPES }, (_, i) =>
+    `<rect x="${(i * w).toFixed(2)}" width="${w.toFixed(2)}" height="48" ` +
+    `fill="${i % 2 ? b : a}"/>`
+  ).join("");
+  return `<svg class="kit" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true">
+      <clipPath id="${id}"><path d="${KIT_PATH}"/></clipPath>
+      <g clip-path="url(#${id})">${bars}</g>
+      <path d="${KIT_PATH}" fill="none" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/>
+    </svg>`;
+}
+
 function renderClubGrid() {
   const grid = $("#club-grid");
   grid.innerHTML = CLUBS.map((club) => `
     <button class="club-card" data-club="${club.id}">
-      <span class="swatch-row">
-        <span class="swatch" style="background:${club.colors[0]}"></span>
-        <span class="swatch" style="background:${club.colors[1]}"></span>
-      </span>
+      ${clubKit(club)}
       <span class="club-name">${escapeHtml(club.name)}</span>
     </button>
   `).join("");
+}
+
+// De shirts van de club(s) van dit potje, boven het bord.
+function renderGameKits(clubIds) {
+  $("#game-kits").innerHTML = clubIds
+    .map((id) => clubById(id))
+    .filter(Boolean)
+    .map((club) => clubKit(club, 56))
+    .join("");
 }
 
 /* ---------- Event-koppeling ---------- */

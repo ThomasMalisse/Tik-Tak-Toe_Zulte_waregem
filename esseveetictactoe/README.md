@@ -46,6 +46,16 @@ verklappen — daarom staat het achter een knop en niet automatisch in beeld.
 Na afloop tonen de lege vakjes wat er had gekund.
 
 
+## Clubmarkering — geen clubwapens
+
+Elke club wordt getoond als een **shirt in zijn twee kleuren**, met een witte
+omtrek (`clubKit()` in `game.js`). Bewust geen officiële clublogo's: die zijn
+merk- en auteursrechtelijk beschermd, en van de zestien clubs staat er maar een
+handvol vrij op Wikimedia Commons — die vier zijn daar bovendien expliciet als
+merk gemarkeerd. Kleuren zijn niet beschermd, en ze stonden al in `clubs.json`.
+
+Wil je een ander patroon, pas dan `KIT_PATH` of `KIT_STRIPES` aan.
+
 ## Techniek
 
 Pure HTML/CSS/JavaScript, geen build-stap, geen dependencies.

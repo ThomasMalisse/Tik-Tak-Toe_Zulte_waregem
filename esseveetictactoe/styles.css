@@ -164,7 +164,8 @@ body {
   font-family: inherit;
 }
 .club-card:hover { transform: translateY(-2px); }
-.club-card .swatch { width: 30px; height: 18px; border-radius: 4px; }
+.kit { display: block; flex-shrink: 0; }
+.game-kits { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
 .club-name { font-family: "Anton", sans-serif; font-size: 13px; text-transform: uppercase; letter-spacing: 0.2px; text-align: left; color: var(--ink); }
 
 /* ---------- Spelscherm ---------- */
