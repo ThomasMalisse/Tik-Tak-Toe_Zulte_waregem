@@ -71,7 +71,11 @@ function cleanPlayer(raw) {
   const clubs = Array.isArray(raw.clubs)
     ? raw.clubs.map(cleanText).filter(Boolean).slice(0, MAX_CLUBS)
     : [];
-  return { name, pos: raw.pos, nat, from: cleanYear(raw.from), to: cleanYear(raw.to), clubs };
+  const intl = Array.isArray(raw.intl)
+    ? raw.intl.map(cleanText).filter(Boolean).slice(0, 5)
+    : [];
+  return { name, pos: raw.pos, nat, from: cleanYear(raw.from), to: cleanYear(raw.to),
+           clubs, intl };
 }
 
 function cleanClubs(raw) {

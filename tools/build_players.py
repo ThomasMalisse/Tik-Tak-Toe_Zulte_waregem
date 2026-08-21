@@ -474,6 +474,59 @@ def fetch_infoboxes(club_qid, club_title, qids):
     return result
 
 
+# ---------------------------------------------------------------------------
+#  Interlands: speelde hij voor een nationale ploeg?
+#
+#  Bij het opbouwen van de "ook bij"-lijst filteren we nationale ploegen er juist
+#  uit (die zijn geen club). Maar "Rode Duivel" is wel een van de leukste
+#  criteria die er bestaan, dus halen we ze apart op.
+#
+#  Q6979593 = nationale voetbalploeg. Daar vallen ook de jeugdploegen onder
+#  (onder 21, onder 19, ...); die filteren we op hun naam weg, want "Rode
+#  Duivel" slaat op de A-ploeg.
+# ---------------------------------------------------------------------------
+
+NATIONAL_QUERY = """
+SELECT ?p ?teamLabel ?countryLabel WHERE {
+  VALUES ?p { %s }
+  ?p wdt:P54 ?team .
+  ?team wdt:P31/wdt:P279* wd:Q6979593 ;
+        wdt:P17 ?country .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "nl,en". }
+}
+"""
+
+YOUTH_RE = re.compile(
+    r"\bonder\b|\bunder\b|\bU-?\d|\bjeugd|\byouth|olympisch|olympic|"
+    r"\bB-?elftal|\bamateur|\bmilitair|\bfutsal|\bbeach|\bvrouwen|\bwomen",
+    re.I)
+
+
+def fetch_national(club_qid, qids):
+    """{QID: [landen waarvoor hij een A-interland speelde]}"""
+    cached = CACHE / f"{club_qid}-nat-v{CACHE_VERSION}.json"
+    if cached.exists():
+        return json.loads(cached.read_text(encoding="utf-8"))
+
+    result = {}
+    ids = list(qids)
+    for i in range(0, len(ids), CAREER_CHUNK):
+        chunk = " ".join("wd:" + q for q in ids[i:i + CAREER_CHUNK])
+        for row in sparql(NATIONAL_QUERY % chunk):
+            pid = val(row, "p").rsplit("/", 1)[-1]
+            team = val(row, "teamLabel") or ""
+            land = val(row, "countryLabel")
+            if not land or YOUTH_RE.search(team) or re.fullmatch(r"Q\d+", land):
+                continue
+            result.setdefault(pid, [])
+            if land not in result[pid]:
+                result[pid].append(land)
+        time.sleep(0.5)
+
+    cached.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    return result
+
+
 def fetch_club(qid):
     """Geeft {qid: speler-dict} voor een club, met cache op schijf.
 
@@ -593,6 +646,7 @@ def apply_overrides(rosters, ov):
                 "name": entry["name"], "pos": entry["pos"], "nat": entry["nat"],
                 "from": entry.get("from"), "to": entry.get("to"),
                 "clubs": list(entry.get("clubs") or []),
+                "intl": list(entry.get("intl") or []),
             })
             # Ook bij zijn andere clubs moet deze passage meetellen, anders
             # matcht "Ook bij <club>" hem daar niet.
@@ -716,6 +770,12 @@ def main():
                 "to": p["to"],
                 "clubs": others,
             })
+        # Interlands erbij (nationale A-ploegen).
+        caps = fetch_national(qid, [p["id"] for p in roster
+                                    if not p["id"].startswith("extra:")])
+        for p in roster:
+            p["intl"] = caps.get(p["id"], [])
+
         # Derde bron: de Wikipedia-infobox. Die geeft de jaartallen die in
         # Wikidata ontbreken, en een specifiekere positie dan P413.
         club_title = category[: -len(" players")]
@@ -774,7 +834,8 @@ def write_data(rosters):
 
     trimmed = {}
     for cid, name, _qid, _colors, _cat in CLUBS:
-        roster = [{k: p[k] for k in ("name", "pos", "nat", "from", "to", "clubs")}
+        roster = [{k: p.get(k) for k in
+                   ("name", "pos", "nat", "from", "to", "clubs", "intl")}
                   for p in rosters.get(cid, [])]
         trimmed[cid] = roster
         path = DATA / f"{cid}.json"

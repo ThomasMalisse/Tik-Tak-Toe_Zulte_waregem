@@ -75,12 +75,13 @@ function recallToken(code) {
 /* ---------- Een potje starten of eraan meedoen ---------- */
 
 // `wantedCode` is optioneel; zonder wordt er een willekeurige gemaakt.
-async function onlineCreate(clubIds, rowIds, colIds, wantedCode) {
+async function onlineCreate(clubIds, rowIds, colIds, wantedCode, opties = {}) {
   const code = wantedCode || newCode();
   const token = newToken();
   const { data, error } = await onlineClient().rpc("create_game", {
     p_code: code, p_club_ids: clubIds,
     p_row_ids: rowIds, p_col_ids: colIds, p_token: token,
+    p_steals: Boolean(opties.steals), p_open: Boolean(opties.open),
   });
   if (error) throw new Error(error.message);
 
@@ -198,6 +199,39 @@ async function onlineRefresh() {
     .from("games").select("*").eq("code", ONLINE.code).maybeSingle();
   if (error) throw new Error(error.message);
   if (data) ONLINE.game = data;
+  return data;
+}
+
+/* ---------- Rematch ---------- */
+
+/*
+ * De ene speler maakt een nieuw potje aan en hangt de nieuwe code aan het oude.
+ * De ander ziet dat via Realtime binnenkomen en kan met één klik mee.
+ */
+async function onlineOfferRematch(newCode) {
+  const { error } = await onlineClient().rpc("offer_rematch", {
+    p_code: ONLINE.code, p_token: ONLINE.token, p_new_code: newCode,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/* ---------- Tegen een onbekende ---------- */
+
+/*
+ * Eerst kijken of er iemand staat te wachten. Zo niet, dan geeft dit null terug
+ * en zet de client zelf een potje open.
+ */
+async function onlineFindOpen() {
+  const token = newToken();
+  const { data, error } = await onlineClient().rpc("find_open_game", {
+    p_token: token,
+  });
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  rememberToken(data.code, token);
+  Object.assign(ONLINE, { code: data.code, token, seat: "O", game: data });
+  await onlineSubscribe(data.code);
   return data;
 }
 

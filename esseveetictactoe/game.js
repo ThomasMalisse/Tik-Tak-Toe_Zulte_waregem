@@ -97,10 +97,35 @@ function replaceChildren(node, ...children) {
   return node;
 }
 
+/*
+ * Alle willekeur in het spel loopt via RNG. Normaal is dat gewoon Math.random,
+ * maar voor de dagelijkse puzzel zetten we er even een gezaaide generator in de
+ * plaats, zodat iedereen op dezelfde dag exact hetzelfde raster krijgt.
+ */
+let RNG = Math.random;
+
+// mulberry32: klein, snel, en geeft bij dezelfde zaadwaarde dezelfde reeks.
+function seededRandom(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Voert `fn` uit met een vaste zaadwaarde en zet daarna alles terug.
+function withSeed(seed, fn) {
+  const vorige = RNG;
+  RNG = seededRandom(seed);
+  try { return fn(); } finally { RNG = vorige; }
+}
+
 function shuffle(arr) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(RNG() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -132,7 +157,7 @@ function cellSolvable(rowCat, colCat, players, usedNames, min = 1) {
  * verdringen de "Ook bij ..."-criteria de rest: er zijn honderden clubs maar
  * maar vier posities.
  */
-const KIND_QUOTA = { pos: 4, era: 8, nat: 10, club: 16 };
+const KIND_QUOTA = { pos: 4, era: 8, intl: 6, nat: 10, club: 16 };
 const GRID_ATTEMPTS = 400;
 const MIN_SOLUTIONS = 2;   // liefst geen vakje met maar één mogelijke naam
 
@@ -186,11 +211,15 @@ const state = {
   stuck: false,    // geeindigd omdat geen enkel open vakje nog oplosbaar was
   playable: true,  // false als er geen oplosbaar raster gemaakt kon worden
   score: { X: 0, O: 0, draw: 0 },
+  daily: null,       // datumsleutel als dit de puzzel van vandaag is
   bot: false,        // spelen tegen de computer
   botLevel: BOT_DEFAULT,
   botThinking: false,
   online: false,     // potje via Supabase, tegen iemand op een ander toestel
   seat: null,        // welke speler zijn wij online: "X" of "O"
+  stealsOn: false,   // mag je een vakje van de ander overnemen?
+  steals: { X: 3, O: 3 },
+  rematchCode: null, // de ander biedt een nieuw potje aan
   solo: false,       // in je eentje: negen pogingen voor negen vakjes
   guessesLeft: 0,
   best: 0,           // beste aantal vakjes ooit met deze club(s)
@@ -329,6 +358,7 @@ function dedupePlayers(players) {
     seen.from = minYear(seen.from, p.from);
     seen.to = maxYear(seen.to, p.to);
     seen.clubs = [...new Set([...seen.clubs, ...p.clubs])];
+    seen.intl = [...new Set([...(seen.intl || []), ...(p.intl || [])])];
   }
   return [...byName.values()];
 }
@@ -438,7 +468,11 @@ function applyRemoteGame(record) {
   state.finished = Boolean(record.finished);
   state.winner = record.winner || null;
   state.opponentJoined = Boolean(record.joined);
+  state.stealsOn = Boolean(record.steals_on);
+  state.steals = { X: cleanCount(record.x_steals, 3), O: cleanCount(record.o_steals, 3) };
+  state.rematchCode = record.rematch_code || null;
   render();
+  renderSoloButton();
 
   // Wie als eerste ziet dat het potje beslist is, legt de uitslag vast.
   if (!state.finished) {
@@ -446,6 +480,17 @@ function applyRemoteGame(record) {
     const winner = res ? res.player : (gameStuck() ? leader() : null);
     if (winner) onlineFinish(winner).catch(() => { /* de ander doet het wel */ });
   }
+}
+
+/*
+ * Stelen: een vakje van de tegenstander overnemen door er een ándere speler
+ * op te noemen. Drie per persoon, en alleen als het potje ermee gestart is.
+ */
+function canSteal(idx) {
+  if (!state.online || !state.stealsOn) return false;
+  const cell = state.board[idx];
+  if (!cell || cell.player === state.seat) return false;
+  return (state.steals[state.seat] || 0) > 0;
 }
 
 // Mogen wij nu iets doen?
@@ -583,8 +628,14 @@ function renderSoloButton() {
   solo.textContent = state.solo ? "Tegen de bot" : "Solo";
   level.style.display = state.bot && !state.solo ? "" : "none";
   level.textContent = "Bot: " + BOT_LEVELS[state.botLevel].label;
-  $("#new-game").style.display = state.online ? "none" : "";
-  $("#reset-score").style.display = state.online ? "none" : "";
+  $("#new-game").style.display = state.online || state.daily ? "none" : "";
+  $("#reset-score").style.display = state.online || state.daily ? "none" : "";
+  // Delen kan pas als de puzzel van vandaag af is.
+  $("#share-daily").style.display = state.daily && state.finished ? "" : "none";
+  // Opnieuw spelen kan alleen online, en pas als het potje uit is.
+  const rematch = $("#rematch");
+  rematch.style.display = state.online && state.finished ? "" : "none";
+  rematch.textContent = state.rematchCode ? "Meedoen aan de rematch" : "Opnieuw?";
 }
 
 function loadSolo() {
@@ -628,7 +679,8 @@ function renderScoreboard() {
     replaceChildren(board,
       scoreBox("score-x", "X", state.board.filter((c) => c && c.player === "X").length,
                state.seat === "X" ? "Jij" : "Tegenstander", true),
-      scoreBox("score-draw", "Vakjes", filledCells() + "/9"),
+      scoreBox("score-draw", state.stealsOn ? "Steals" : "Vakjes",
+               state.stealsOn ? `${state.steals[state.seat]}` : filledCells() + "/9"),
       scoreBox("score-o", "O", state.board.filter((c) => c && c.player === "O").length,
                state.seat === "O" ? "Jij" : "Tegenstander", true));
     return;
@@ -678,7 +730,9 @@ function render() {
         (cell ? " claimed " + (cell.player === "X" ? "x" : "o") : ""));
       btn.type = "button";
       btn.dataset.idx = String(idx);
-      btn.disabled = Boolean(cell) || state.finished || !myTurn();
+      btn.disabled = state.finished || !myTurn() ||
+                     (Boolean(cell) && !canSteal(idx));
+      if (cell && canSteal(idx)) btn.classList.add("stealable");
 
       if (cell) {
         btn.appendChild(el("span", "mark", state.solo ? "✓" : cell.player));
@@ -778,6 +832,8 @@ function renderSuggestions() {
 }
 
 function updateSuggestions() {
+  // Ook bij een steal klopt dit: de naam die je vervangt staat op het bord en
+  // is dus al uitgesloten — en je moet nu net een ándere speler noemen.
   const pool = state.players.filter((p) => !state.usedNames.has(p.name));
   suggestions = suggestPlayers($("#guess-input").value, pool);
   suggestionIdx = -1;
@@ -800,13 +856,18 @@ function pickSuggestion(i) {
 }
 
 function openGuess(idx) {
-  if (state.finished || state.board[idx]) return;
+  if (state.finished) return;
+  if (state.board[idx] && !canSteal(idx)) return;
   if (!myTurn()) return;
   activeIdx = idx;
   const r = Math.floor(idx / 3);
   const c = idx % 3;
   $("#modal-title").textContent = `${state.rows[r].label}  ✕  ${state.cols[c].label}`;
-  $("#modal-sub").textContent = state.solo
+  if (state.board[idx]) {
+    $("#modal-sub").textContent =
+      `Stelen van ${state.board[idx].name} — noem een andere speler ` +
+      `(nog ${state.steals[state.seat]} steals)`;
+  } else $("#modal-sub").textContent = state.solo
     ? `Nog ${state.guessesLeft} pogingen — noem een speler die aan beide voldoet`
     : `Speler ${state.current} — noem een speler die aan beide voldoet`;
   $("#guess-input").value = "";
@@ -963,6 +1024,7 @@ function finishSoloTurn() {
   if (state.guessesLeft <= 0 || n === 9 || gameStuck()) {
     state.finished = true;
     state.stuck = state.guessesLeft > 0 && n < 9;
+    if (state.daily) { saveDailyResult(state.daily); setTimeout(renderSoloButton, 0); }
     if (n > state.best) {
       state.best = n;
       saveBest();
@@ -1062,6 +1124,107 @@ function renderGameKits(clubIds) {
     .forEach((club) => box.appendChild(clubKit(club, 56)));
 }
 
+/* ---------- Dagelijkse puzzel ---------- */
+
+/*
+ * Eén raster per dag, voor iedereen hetzelfde. De datum is de zaadwaarde: die
+ * bepaalt zowel de club als het raster, dus twee mensen op dezelfde dag zien
+ * exact hetzelfde bord zonder dat er iets over het netwerk hoeft.
+ *
+ * De puzzel is de solomodus: negen pogingen, hoeveel vakjes haal je?
+ */
+function todayKey(d = new Date()) {
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+
+function dailyResultKey(key) {
+  return "bke-daily:" + key;
+}
+
+function loadDailyResult(key) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(dailyResultKey(key)) || "null");
+    if (!raw || typeof raw !== "object") return null;
+    return { filled: cleanCount(raw.filled, 9), club: String(raw.club || ""),
+             board: Array.isArray(raw.board) ? raw.board : [] };
+  } catch (e) { return null; }
+}
+
+function saveDailyResult(key) {
+  try {
+    localStorage.setItem(dailyResultKey(key), JSON.stringify({
+      filled: filledCells(),
+      club: state.clubIds.map((id) => (clubById(id) || {}).name).join(" + "),
+      board: state.board.map((c) => (c ? 1 : 0)),
+    }));
+  } catch (e) { /* niets */ }
+}
+
+async function startDailyGame() {
+  const key = todayKey();
+  state.daily = key;
+  state.bot = false;
+  state.online = false;
+  state.solo = true;              // negen pogingen, alleen spelen
+  state.seat = "X";
+  state.mode = "daily";
+
+  // De club volgt uit de datum, zodat iedereen dezelfde krijgt.
+  const clubId = withSeed(key, () => shuffle(CLUBS.map((c) => c.id))[0]);
+  state.clubIds = [clubId];
+
+  const info = headerInfoFor("club", [clubId]);
+  applyTheme(info.colors);
+  $("#game-eyebrow").textContent = "Puzzel van vandaag";
+  $("#game-title").textContent = info.title;
+  renderGameKits([clubId]);
+  showScreen("game");
+
+  const loading = el("div", "empty-state");
+  loading.appendChild(el("p", null, "Spelers laden…"));
+  replaceChildren($("#board-wrap"), loading);
+  try {
+    await loadRosters([clubId]);
+  } catch (err) {
+    showLoadError(err);
+    return;
+  }
+
+  state.players = rosterFor(clubId);
+  state.score = { X: 0, O: 0, draw: 0 };
+  state.best = 0;
+
+  const grid = withSeed(key, () => generateGrid(state.players));
+  state.board = new Array(9).fill(null);
+  state.usedNames = new Set();
+  state.current = "X";
+  state.finished = false;
+  state.stuck = false;
+  state.guessesLeft = SOLO_GUESSES;
+  state.playable = Boolean(grid);
+  state.rows = grid ? grid.rows : [];
+  state.cols = grid ? grid.cols : [];
+  renderSoloButton();
+  render();
+}
+
+/*
+ * Resultaat om te delen, in de stijl van Wordle: geen namen, alleen het
+ * patroon, zodat je niets verklapt.
+ */
+function dailyShareText() {
+  const d = new Date();
+  const datum = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const club = state.clubIds.map((id) => (clubById(id) || {}).name).join(" + ");
+  const rijen = [];
+  for (let r = 0; r < 3; r++) {
+    rijen.push(state.board.slice(r * 3, r * 3 + 3)
+      .map((c) => (c ? "🟩" : "⬜")).join(""));
+  }
+  return `Boter Kaas & Eieren — ${datum}\n${club} · ${filledCells()}/9\n\n` +
+         rijen.join("\n") + "\n\n" + location.origin + location.pathname;
+}
+
 /* ---------- Potje tegen de bot ---------- */
 
 async function startBotGame(clubIds) {
@@ -1099,6 +1262,85 @@ async function startBotGame(clubIds) {
   newGame();
 }
 
+/* ---------- Rematch ---------- */
+
+/*
+ * Opnieuw spelen: wij maken een nieuw potje met hetzelfde clubduo en een vers
+ * raster, en hangen die code aan het oude potje. De tegenstander ziet dat via
+ * Realtime binnenkomen en kan meteen mee.
+ */
+async function vraagRematch() {
+  const knop = $("#rematch");
+  knop.disabled = true;
+  try {
+    const oudeCode = ONLINE.code;
+    const oudToken = ONLINE.token;
+    const clubIds = state.clubIds;
+    const stealsOn = state.stealsOn;
+
+    const grid = generateGrid(state.players);
+    if (!grid) throw new Error("Geen nieuw raster te maken.");
+
+    // Even de oude gegevens bewaren: onlineCreate overschrijft ONLINE.
+    const nieuw = await onlineCreate(clubIds,
+      grid.rows.map((c) => c.id), grid.cols.map((c) => c.id), null,
+      { steals: stealsOn });
+
+    Object.assign(ONLINE, { code: oudeCode, token: oudToken });
+    await onlineOfferRematch(nieuw.code);
+    Object.assign(ONLINE, { code: nieuw.code, token: recallToken(nieuw.code), seat: "X" });
+    await onlineSubscribe(nieuw.code);
+
+    ONLINE.onUpdate = (rec) => { if (rec.joined) startOnlineGame(rec); };
+    await startOnlineGame(nieuw);
+    $("#online-code-shown").textContent = ONLINE.code;
+    $("#online-link").value = onlineShareUrl(ONLINE.code);
+    showOnlineScreen("waiting");
+  } catch (err) {
+    $("#turn").appendChild(el("span", "share-note", " " + err.message));
+  } finally {
+    knop.disabled = false;
+  }
+}
+
+// De ander bood een rematch aan: met één klik mee.
+async function accepteerRematch(code) {
+  try {
+    const record = await onlineJoin(code);
+    await startOnlineGame(record);
+  } catch (err) {
+    $("#turn").appendChild(el("span", "share-note", " " + err.message));
+  }
+}
+
+/* ---------- Tegen een willekeurige tegenstander ---------- */
+
+async function speelTegenOnbekende() {
+  const note = $("#overview-join-note");
+  if (!ONLINE_ENABLED) {
+    note.textContent = "Online spelen is nog niet ingesteld — zie config.js.";
+    note.className = "feedback bad";
+    return;
+  }
+  note.textContent = "Zoeken naar een tegenstander…";
+  note.className = "feedback";
+  try {
+    const bestaand = await onlineFindOpen();
+    if (bestaand) {
+      note.textContent = "";
+      await startOnlineGame(bestaand);
+      return;
+    }
+    // Niemand gevonden: zelf een potje openzetten en wachten.
+    note.textContent = "";
+    const ids = shuffle(CLUBS.map((c) => c.id)).slice(0, 2);
+    await createOnlineGame(ids, null, { open: true });
+  } catch (err) {
+    note.textContent = err.message;
+    note.className = "feedback bad";
+  }
+}
+
 /* ---------- Online-scherm ---------- */
 
 /*
@@ -1126,7 +1368,7 @@ function onlineFeedback(text, ok) {
  * sturen alleen de id's van de zes criteria mee. De tegenstander bouwt daar
  * hetzelfde bord uit op.
  */
-async function createOnlineGame(clubIds, wantedCode) {
+async function createOnlineGame(clubIds, wantedCode, opties) {
   const ids = Array.isArray(clubIds) ? clubIds : [clubIds];
   showOnlineScreen();
   onlineFeedback("Potje aanmaken…", true);
@@ -1139,7 +1381,7 @@ async function createOnlineGame(clubIds, wantedCode) {
     if (!grid) throw new Error("Geen speelbaar raster voor deze club.");
 
     const record = await onlineCreate(ids,
-      grid.rows.map((c) => c.id), grid.cols.map((c) => c.id), wantedCode);
+      grid.rows.map((c) => c.id), grid.cols.map((c) => c.id), wantedCode, opties);
 
     $("#online-code-shown").textContent = ONLINE.code;
     $("#online-link").value = onlineShareUrl(ONLINE.code);
@@ -1193,6 +1435,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         $("#clubs-eyebrow").textContent = mode === "bot"
           ? "Alleen spelen" : "Nodig iemand uit";
         showScreen("clubs");
+      } else if (mode === "daily") {
+        startDailyGame();
       } else if (mode === "belgium") {
         state.pendingMode = "online";
         const shuffled = shuffle(CLUBS.map((c) => c.id));
@@ -1237,6 +1481,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (document.visibilityState === "visible" && state.online && ONLINE.code) {
       onlineRefresh().then((rec) => rec && applyRemoteGame(rec)).catch(() => {});
     }
+  });
+
+  $("#rematch").addEventListener("click", () => {
+    if (state.rematchCode) accepteerRematch(state.rematchCode);
+    else vraagRematch();
+  });
+  $("#find-open").addEventListener("click", speelTegenOnbekende);
+
+  $("#share-daily").addEventListener("click", async () => {
+    const tekst = dailyShareText();
+    try {
+      if (navigator.share) await navigator.share({ text: tekst });
+      else await navigator.clipboard.writeText(tekst);
+      $("#turn").appendChild(el("span", "share-note", " Gekopieerd!"));
+    } catch (err) { /* gebruiker heeft geannuleerd */ }
   });
 
   $("#online-copy").addEventListener("click", async () => {

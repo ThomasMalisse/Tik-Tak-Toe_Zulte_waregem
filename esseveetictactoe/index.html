@@ -58,7 +58,16 @@
           <span class="mode-desc">Willekeurige clash tussen twee clubs, met code.</span>
         </button>
 
-        <button class="mode-card mode-light" data-mode="bot">
+        <button class="mode-card mode-light" data-mode="daily">
+          <span class="swatch-row">
+            <span class="swatch sw-green"></span>
+            <span class="swatch sw-red"></span>
+          </span>
+          <span class="mode-name">Puzzel van vandaag</span>
+          <span class="mode-desc">Elke dag hetzelfde raster voor iedereen. Deel je score.</span>
+        </button>
+
+        <button class="mode-card mode-dark" data-mode="bot">
           <span class="swatch-row">
             <span class="swatch sw-red"></span>
             <span class="swatch sw-black"></span>
@@ -75,6 +84,8 @@
                  autocomplete="off" spellcheck="false" maxlength="16" />
           <button id="overview-join" class="btn btn-primary">Meedoen</button>
         </div>
+        <p class="join-or">of <button id="find-open" class="link-btn">speel tegen
+          een willekeurige tegenstander</button></p>
         <p id="overview-join-note" class="feedback"></p>
       </div>
 
@@ -144,6 +155,8 @@
         <button id="new-game" class="btn btn-primary">Nieuw potje</button>
         <button id="toggle-solo" class="btn btn-ghost">Solo</button>
         <button id="bot-level" class="btn btn-ghost">Bot: Normaal</button>
+        <button id="share-daily" class="btn btn-primary">Deel je score</button>
+        <button id="rematch" class="btn btn-primary">Opnieuw?</button>
         <button id="reset-score" class="btn btn-ghost">Reset</button>
         <button id="switch-team" class="btn btn-ghost">Terug naar overzicht</button>
       </div>

@@ -52,6 +52,20 @@ function buildCategories(players) {
     });
   });
 
+  /*
+   * Interland-criteria. "Rode Duivel" is het bekendste vakje dat er bestaat in
+   * dit spel; voor andere landen wordt het "Interland voor Nigeria".
+   */
+  const landen = [...new Set(players.flatMap((p) => p.intl || []))];
+  landen.forEach((land) => {
+    cats.push({
+      id: "intl:" + land,
+      label: land === "België" ? "Rode Duivel" : "Interland voor " + land,
+      kind: "intl",
+      test: (p) => (p.intl || []).includes(land),
+    });
+  });
+
   // Tijdvak-criteria ("speelde er in de jaren ...") — dit maakt het verschil
   // tussen de oude garde en de huidige kern.
   DECADES.forEach((decade) => {
