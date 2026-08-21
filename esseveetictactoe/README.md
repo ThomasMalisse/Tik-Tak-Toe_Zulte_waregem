@@ -7,10 +7,16 @@ decennium waarin hij er speelde).
 
 ## Zo speel je
 
-Er zijn twee manieren: **met z'n tweeën** (standaard) of **solo**, te wisselen
-met de knop `👤 Solo` op het spelscherm.
+Op het overzicht kies je uit vier dingen:
 
-### Met z'n tweeën
+| | |
+|---|---|
+| **Ploegen België** | Kies een club. Je krijgt een code om iemand uit te nodigen. |
+| **Heel België** | Willekeurige clash tussen twee clubs, ook met code. |
+| **Meedoen** | Kreeg je een code of een link? Vul hem hier in. |
+| **Tegen de bot** | Alleen spelen tegen de computer. |
+
+### Met z'n tweeën (online)
 
 - Twee spelers, **X** en **O**, spelen om beurten (hotseat op één toestel).
 - Klik op een vakje. Je krijgt een rij- en een kolomcriterium te zien.
@@ -30,15 +36,27 @@ In **Heel België** trekt elk nieuw potje twee andere ploegen tegenover elkaar �
 nooit twee keer na elkaar dezelfde clash. De stand loopt daar dan wel door over
 alle affiches heen; per toevallig duo bijhouden zou telkens op 0-0 springen.
 
+### Tegen de bot
+
+De bot speelt als **O** en antwoordt vanzelf met een geldige speler. Hij is niet
+onverslaanbaar gemaakt: met de knop `Bot: …` wissel je tussen makkelijk, normaal
+en moeilijk. Gemeten verschil — hij blokkeert een dreigende drie op een rij in
+19% (makkelijk), 50% (normaal) en 90% (moeilijk) van de gevallen, en laat zijn
+beurt lopen in 26% tegenover 1%.
+
+Zie [`bot.js`](bot.js): het vinden van een geldig antwoord is triviaal (de bot
+kent de hele database), dus de moeilijkheid zit in hem geloofwaardig te laten
+falen.
+
 ### Solo
 
 Negen pogingen voor negen vakjes. Elke gok telt, juist of fout. Hoeveel vakjes
 haal je? Je record per club blijft bewaard.
 
-### Samen online
+### Online spelen instellen
 
-Kies **Samen online**, pik een club, en je krijgt een code (`ESSV-XXXXX`) plus
-een deelbare link. Wie die opent, doet mee vanaf zijn eigen toestel; zetten
+Elk potje dat je start is online: je krijgt een code (`ESSV-XXXXX`) plus een
+deelbare link. Wie die opent, doet mee vanaf zijn eigen toestel; zetten
 verschijnen live bij allebei.
 
 Dit heeft een gratis **Supabase**-project nodig:

@@ -14,7 +14,7 @@ function makeElement(tag) {
   return {
     tagName: String(tag).toUpperCase(),
     children: [], value: "", textContent: "", className: "", disabled: false,
-    type: "", dataset: {}, attrs: {},
+    type: "", dataset: {}, attrs: {}, style: {},
     get firstChild() { return this.children[0] || null; },
     appendChild(c) { this.children.push(c); return c; },
     removeChild(c) { this.children = this.children.filter((x) => x !== c); return c; },
@@ -50,12 +50,12 @@ function makeCtx() {
     },
   };
   vm.createContext(ctx);
-  for (const f of ["players.js", "categories.js", "game.js"])
+  for (const f of ["bot.js", "players.js", "categories.js", "game.js"])
     vm.runInContext(fs.readFileSync(dir + f, "utf8"), ctx, { filename: f });
   vm.runInContext(`globalThis.api = { state, startGame, newGame, openGuess,
     submitGuess, allowedForCell, filledCells, dedupePlayers, withOwnClub,
     suggestPlayers, eligibleCategories, generateGrid, loadClubs, loadRosters,
-    rosterFor, clubById, loadBest, gameStuck, nextGame, saveScore }`, ctx);
+    rosterFor, clubById, loadBest, gameStuck, nextGame, saveScore, botMove, botPickCell, BOT_LEVELS }`, ctx);
   return ctx;
 }
 
@@ -149,6 +149,68 @@ async function playGame(ctx, { solo, mode, clubIds, wrongEvery }) {
   await cctx.api.nextGame();
   check("vaste club blijft dezelfde ploeg", cctx.api.state.clubIds.join() === "stvv",
         cctx.api.state.clubIds.join());
+
+  console.log("\n--- de bot ---");
+  const botCtx = makeCtx();
+  await botCtx.api.loadClubs();
+  await botCtx.api.loadRosters(["zulte-waregem"]);
+  const botPool = botCtx.api.rosterFor("zulte-waregem");
+  const alles = (i) => botPool.slice(0, 30);   // altijd oplossingen beschikbaar
+
+  // Alle bottests zijn statistisch: de bot blundert en past met opzet, dus één
+  // enkele worp zegt niets over of hij het goed doet.
+  const hoeVaak = (bord, level, idx, n = 600) => {
+    let raak = 0;
+    for (let i = 0; i < n; i++) {
+      const z = botCtx.api.botMove(bord, level, "O", alles);
+      if (z && z.idx === idx) raak++;
+    }
+    return Math.round(100 * raak / n);
+  };
+
+  // 1. Wint hij als hij kan winnen?
+  const winbord = [ {player:"O",name:"a"}, {player:"O",name:"b"}, null,
+                    null, {player:"X",name:"c"}, null, null, null, null ];
+  const winPct = hoeVaak(winbord, "moeilijk", 2);
+  check("bot maakt drie op een rij af", winPct > 80, winPct + "% van de keren");
+
+  // 2. Blokkeert hij?
+  const blokbord = [ {player:"X",name:"a"}, {player:"X",name:"b"}, null,
+                     null, {player:"O",name:"c"}, null, null, null, null ];
+  const blokPct = hoeVaak(blokbord, "moeilijk", 2);
+  check("bot blokkeert drie op een rij", blokPct > 80, blokPct + "% van de keren");
+
+  // 3. Neemt hij op een leeg bord meestal het midden? (Eén worp zegt niets:
+  //    ook een sterke bot blundert of past af en toe.)
+  const leeg = new Array(9).fill(null);
+  const middenPct = hoeVaak(leeg, "moeilijk", 4);
+  check("bot neemt meestal het midden", middenPct > 80, middenPct + "% van de keren");
+
+  // 4. Verschillen de niveaus echt? Meet hoe vaak hij een dreiging blokkeert.
+  const blokkeerKans = (level) => hoeVaak(blokbord, level, 2);
+  const m = blokkeerKans("makkelijk"), n = blokkeerKans("normaal"), z = blokkeerKans("moeilijk");
+  console.log(`       blokkeert een dreiging: makkelijk ${m}%, normaal ${n}%, moeilijk ${z}%`);
+  check("moeilijker = scherper spel", m < n && n < z, `${m} < ${n} < ${z}`);
+
+  // 5. En laat hij op makkelijk vaker zijn beurt lopen?
+  const passKans = (level) => {
+    let gepast = 0;
+    for (let i = 0; i < 600; i++) {
+      if (!botCtx.api.botMove(leeg, level, "O", alles)) gepast++;
+    }
+    return Math.round(100 * gepast / 600);
+  };
+  const pm = passKans("makkelijk"), pz = passKans("moeilijk");
+  console.log(`       laat zijn beurt lopen: makkelijk ${pm}%, moeilijk ${pz}%`);
+  check("makkelijke bot past vaker", pm > pz, `${pm}% tegen ${pz}%`);
+
+  // 6. Geeft hij altijd een geldige naam terug?
+  let ongeldig = 0;
+  for (let i = 0; i < 200; i++) {
+    const z2 = botCtx.api.botMove(leeg, "moeilijk", "O", (idx) => botPool.slice(0, 5));
+    if (z2 && !botPool.slice(0, 5).some((p) => p.name === z2.name)) ongeldig++;
+  }
+  check("bot noemt alleen geldige spelers", ongeldig === 0, ongeldig + " fout");
 
   console.log("\n--- bundel voor file:// ---");
   // Bij file:// blokkeert de browser fetch en laden we data/bundle.js in plaats

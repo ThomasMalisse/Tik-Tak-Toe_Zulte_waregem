@@ -31,15 +31,6 @@
       <h1 class="mega-title mega-title-sm">Kies je spel</h1>
 
       <div class="mode-cards">
-        <button class="mode-card mode-light" data-mode="essevee">
-          <span class="swatch-row">
-            <span class="swatch sw-red"></span>
-            <span class="swatch sw-green"></span>
-          </span>
-          <span class="mode-name">Zulte Waregem</span>
-          <span class="mode-desc">Rood tegen groen — de klassieker.</span>
-        </button>
-
         <button class="mode-card mode-dark" data-mode="club">
           <span class="swatch-row swatch-row-5">
             <span class="swatch sw-red"></span>
@@ -49,7 +40,7 @@
             <span class="swatch sw-green"></span>
           </span>
           <span class="mode-name">Ploegen België</span>
-          <span class="mode-desc">Speel in de kleuren van elke club.</span>
+          <span class="mode-desc">Kies een club. Je krijgt een code om te delen.</span>
         </button>
 
         <button class="mode-card mode-light" data-mode="belgium">
@@ -64,16 +55,25 @@
             <span class="swatch sw-sky"></span>
           </span>
           <span class="mode-name">Heel België</span>
-          <span class="mode-desc">Willekeurige clash: twee clubs tegen elkaar.</span>
+          <span class="mode-desc">Willekeurige clash tussen twee clubs, met code.</span>
         </button>
 
-        <button class="mode-card mode-dark" data-mode="online">
+        <button class="mode-card mode-dark" data-mode="join">
+          <span class="swatch-row">
+            <span class="swatch sw-green"></span>
+            <span class="swatch sw-yellow"></span>
+          </span>
+          <span class="mode-name">Meedoen</span>
+          <span class="mode-desc">Kreeg je een code of een link? Vul hem hier in.</span>
+        </button>
+
+        <button class="mode-card mode-light" data-mode="bot">
           <span class="swatch-row">
             <span class="swatch sw-red"></span>
-            <span class="swatch sw-green"></span>
+            <span class="swatch sw-black"></span>
           </span>
-          <span class="mode-name">Samen online</span>
-          <span class="mode-desc">Nodig iemand uit met een code of een link.</span>
+          <span class="mode-name">Tegen de bot</span>
+          <span class="mode-desc">Alleen spelen. Jij noemt een speler, de bot antwoordt.</span>
         </button>
       </div>
 
@@ -84,8 +84,8 @@
   <!-- ============ CLUBKEUZE ============ -->
   <section id="screen-clubs" class="screen">
     <div class="s-center">
-      <p class="eyebrow">Ploegen België</p>
-      <h1 class="mega-title mega-title-sm">Kies een club</h1>
+      <p id="clubs-eyebrow" class="eyebrow">Nodig iemand uit</p>
+      <h1 id="clubs-title" class="mega-title mega-title-sm">Kies een club</h1>
 
       <div id="club-grid" class="club-grid"></div>
 
@@ -108,13 +108,7 @@
 
       <div id="online-setup" class="online-panel">
         <div class="online-block">
-          <h3>Een potje starten</h3>
-          <p>Kies met welke club je speelt; je krijgt een code om te delen.</p>
-          <div id="online-club-grid" class="club-grid club-grid-sm"></div>
-        </div>
-
-        <div class="online-block">
-          <h3>Of doe mee met een code</h3>
+          <h3>Doe mee met een code</h3>
           <div class="online-join">
             <input id="online-code" type="text" placeholder="ESSV-XXXXX"
                    autocomplete="off" spellcheck="false" maxlength="16" />
@@ -159,6 +153,7 @@
       <div class="controls">
         <button id="new-game" class="btn btn-primary">Nieuw potje</button>
         <button id="toggle-solo" class="btn btn-ghost">Solo</button>
+        <button id="bot-level" class="btn btn-ghost">Bot: Normaal</button>
         <button id="reset-score" class="btn btn-ghost">Reset</button>
         <button id="switch-team" class="btn btn-ghost">Terug naar overzicht</button>
       </div>
@@ -194,6 +189,7 @@
   <script src="config.js"></script>
   <script src="vendor/supabase.js"></script>
   <script src="online.js"></script>
+  <script src="bot.js"></script>
   <script src="players.js"></script>
   <script src="categories.js"></script>
   <script src="game.js"></script>

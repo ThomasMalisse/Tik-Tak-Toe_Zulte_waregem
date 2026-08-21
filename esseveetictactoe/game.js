@@ -186,6 +186,9 @@ const state = {
   stuck: false,    // geeindigd omdat geen enkel open vakje nog oplosbaar was
   playable: true,  // false als er geen oplosbaar raster gemaakt kon worden
   score: { X: 0, O: 0, draw: 0 },
+  bot: false,        // spelen tegen de computer
+  botLevel: BOT_DEFAULT,
+  botThinking: false,
   online: false,     // potje via Supabase, tegen iemand op een ander toestel
   seat: null,        // welke speler zijn wij online: "X" of "O"
   solo: false,       // in je eentje: negen pogingen voor negen vakjes
@@ -342,6 +345,41 @@ function maxYear(a, b) {
   return Math.max(a, b);
 }
 
+/* ---------- De bot ---------- */
+
+/*
+ * De bot is altijd O. Na jouw beurt denkt hij even na en zet hij, of hij past
+ * omdat hij het vakje niet weet. Dat "nadenken" is er puur voor het gevoel:
+ * een tegenstander die onmiddellijk antwoordt voelt niet als spelen.
+ */
+function botTurn() {
+  if (!state.bot || state.finished || state.current !== "O") return;
+  state.botThinking = true;
+  render();
+
+  setTimeout(() => {
+    const zet = botMove(state.board, state.botLevel, "O",
+                        (idx) => allowedForCell(idx));
+    state.botThinking = false;
+    if (zet) {
+      state.board[zet.idx] = { player: "O", name: zet.name };
+      state.usedNames.add(zet.name);
+    }
+    finishTurn();
+  }, BOT_LEVELS[state.botLevel].thinkMs);
+}
+
+function loadBotLevel() {
+  try {
+    const v = localStorage.getItem("bke-botlevel");
+    return BOT_LEVELS[v] ? v : BOT_DEFAULT;
+  } catch (e) { return BOT_DEFAULT; }
+}
+
+function saveBotLevel() {
+  try { localStorage.setItem("bke-botlevel", state.botLevel); } catch (e) { /* niets */ }
+}
+
 /* ---------- Online potjes ---------- */
 
 /*
@@ -412,10 +450,12 @@ function applyRemoteGame(record) {
 
 // Mogen wij nu iets doen?
 function myTurn() {
+  if (state.bot) return state.current === "X" && !state.botThinking;
   return !state.online || (state.seat === state.current && state.opponentJoined);
 }
 
 function newGame() {
+  state.botThinking = false;
   const grid = generateGrid(state.players);
   state.board = new Array(9).fill(null);
   state.current = "X";
@@ -443,6 +483,7 @@ function newGame() {
  * de hele avond dezelfde clash.
  */
 function nextGame() {
+  if (state.online) return;      // online speel je het potje uit
   if (state.mode !== "belgium") return newGame();
 
   const current = state.clubIds.slice().sort().join("+");
@@ -531,8 +572,19 @@ function saveScore() {
 
 /* ---------- Rendering ---------- */
 
+/*
+ * De knoppenrij past zich aan de modus aan. Online is er niets te kiezen —
+ * de tegenstander bepaalt mee — dus dan verdwijnen ze.
+ */
 function renderSoloButton() {
-  $("#toggle-solo").textContent = state.solo ? "Met z'n tweeën" : "Solo";
+  const solo = $("#toggle-solo");
+  const level = $("#bot-level");
+  solo.style.display = state.online ? "none" : "";
+  solo.textContent = state.solo ? "Tegen de bot" : "Solo";
+  level.style.display = state.bot && !state.solo ? "" : "none";
+  level.textContent = "Bot: " + BOT_LEVELS[state.botLevel].label;
+  $("#new-game").style.display = state.online ? "none" : "";
+  $("#reset-score").style.display = state.online ? "none" : "";
 }
 
 function loadSolo() {
@@ -563,6 +615,13 @@ function renderScoreboard() {
       scoreBox("score-x", "Vakjes", filledCells() + "/9"),
       scoreBox("score-draw", "Pogingen", state.guessesLeft),
       scoreBox("score-o", "Record", state.best));
+    return;
+  }
+  if (state.bot) {
+    replaceChildren(board,
+      scoreBox("score-x", "X", state.score.X, "Jij", true),
+      scoreBox("score-draw", "Gelijk", state.score.draw),
+      scoreBox("score-o", "O", state.score.O, "Bot", true));
     return;
   }
   if (state.online) {
@@ -659,6 +718,10 @@ function render() {
       ? el("span", "badge draw", "Gelijkspel!" + stuck)
       : el("span", "badge win-" + mark(state.winner),
            `Speler ${state.winner} wint!${stuck}`));
+  } else if (state.bot) {
+    replaceChildren(turnEl, state.botThinking
+      ? el("span", "badge turn-o", "De bot denkt na…")
+      : el("span", "badge turn-x", "Jij bent aan zet"));
   } else if (state.online) {
     if (!state.opponentJoined) {
       replaceChildren(turnEl, el("span", "badge draw", "Wachten op je tegenstander…"));
@@ -890,6 +953,7 @@ function finishTurn() {
   // Wissel altijd van speler (juist of fout)
   state.current = state.current === "X" ? "O" : "X";
   render();
+  botTurn();
 }
 
 // In je eentje: geen winnaar, maar hoeveel vakjes haal je met negen pogingen?
@@ -998,33 +1062,55 @@ function renderGameKits(clubIds) {
     .forEach((club) => box.appendChild(clubKit(club, 56)));
 }
 
-/* ---------- Online-scherm ---------- */
+/* ---------- Potje tegen de bot ---------- */
 
-function showOnlineScreen() {
-  const setup = $("#online-setup");
-  const waiting = $("#online-waiting");
-  const unavailable = $("#online-unavailable");
+async function startBotGame(clubIds) {
+  state.bot = true;
+  state.online = false;
+  state.solo = false;
+  state.seat = "X";
+  state.mode = "bot";
+  state.clubIds = clubIds;
+  state.botLevel = loadBotLevel();
 
-  unavailable.style.display = ONLINE_ENABLED ? "none" : "";
-  setup.style.display = ONLINE_ENABLED ? "" : "none";
-  waiting.style.display = "none";
-  $("#online-feedback").textContent = "";
+  const info = headerInfoFor(clubIds.length === 1 ? "club" : "belgium", clubIds);
+  applyTheme(info.colors);
+  $("#game-eyebrow").textContent = "Tegen de bot · " + BOT_LEVELS[state.botLevel].label;
+  $("#game-title").textContent = info.title;
+  renderGameKits(clubIds);
+  showScreen("game");
 
-  if (ONLINE_ENABLED) renderOnlineClubGrid();
-  showScreen("online");
+  const loading = el("div", "empty-state");
+  loading.appendChild(el("p", null, "Spelers laden…"));
+  replaceChildren($("#board-wrap"), loading);
+  try {
+    await loadRosters(clubIds);
+  } catch (err) {
+    showLoadError(err);
+    return;
+  }
+
+  state.players = clubIds.length === 1
+    ? rosterFor(clubIds[0])
+    : dedupePlayers(clubIds.flatMap(withOwnClub));
+  state.score = loadScore("bot", clubIds);
+  state.best = 0;
+  renderSoloButton();
+  newGame();
 }
 
-// Zelfde clubkaarten als bij "Ploegen België", maar ze starten een online potje.
-function renderOnlineClubGrid() {
-  const grid = clear($("#online-club-grid"));
-  CLUBS.forEach((club) => {
-    const card = el("button", "club-card");
-    card.type = "button";
-    card.dataset.club = club.id;
-    card.appendChild(clubKit(club, 34));
-    card.appendChild(el("span", "club-name", club.name));
-    grid.appendChild(card);
-  });
+/* ---------- Online-scherm ---------- */
+
+/*
+ * Eén scherm voor twee dingen: een code invullen om mee te doen, en wachten
+ * tot je tegenstander binnenkomt nadat jij een potje aanmaakte.
+ */
+function showOnlineScreen(mode) {
+  $("#online-unavailable").style.display = ONLINE_ENABLED ? "none" : "";
+  $("#online-setup").style.display = ONLINE_ENABLED && mode !== "waiting" ? "" : "none";
+  $("#online-waiting").style.display = mode === "waiting" ? "" : "none";
+  $("#online-feedback").textContent = "";
+  showScreen("online");
 }
 
 function onlineFeedback(text, ok) {
@@ -1038,27 +1124,31 @@ function onlineFeedback(text, ok) {
  * sturen alleen de id's van de zes criteria mee. De tegenstander bouwt daar
  * hetzelfde bord uit op.
  */
-async function createOnlineGame(clubId, wantedCode) {
+async function createOnlineGame(clubIds, wantedCode) {
+  const ids = Array.isArray(clubIds) ? clubIds : [clubIds];
+  showOnlineScreen();
   onlineFeedback("Potje aanmaken…", true);
   try {
-    await loadRosters([clubId]);
-    const players = rosterFor(clubId);
+    await loadRosters(ids);
+    const players = ids.length === 1
+      ? rosterFor(ids[0])
+      : dedupePlayers(ids.flatMap(withOwnClub));
     const grid = generateGrid(players);
     if (!grid) throw new Error("Geen speelbaar raster voor deze club.");
 
-    const record = await onlineCreate([clubId],
+    const record = await onlineCreate(ids,
       grid.rows.map((c) => c.id), grid.cols.map((c) => c.id), wantedCode);
 
     $("#online-code-shown").textContent = ONLINE.code;
     $("#online-link").value = onlineShareUrl(ONLINE.code);
-    $("#online-setup").style.display = "none";
-    $("#online-waiting").style.display = "";
     $("#online-copy-note").textContent = "";
+    showOnlineScreen("waiting");
 
+    // Zodra de tegenstander meedoet, springen we naar het bord.
     // Zodra de tegenstander meedoet, springen we naar het bord.
     ONLINE.onUpdate = (rec) => { if (rec.joined) startOnlineGame(rec); };
     await startOnlineGame(record);
-    showScreen("online");   // eerst nog het wachtscherm tonen
+    showOnlineScreen("waiting");   // eerst nog het wachtscherm tonen
   } catch (err) {
     onlineFeedback(err.message, false);
   }
@@ -1087,15 +1177,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.querySelectorAll(".mode-card").forEach((card) => {
     card.addEventListener("click", () => {
       const mode = card.dataset.mode;
-      if (mode === "essevee") {
-        startGame("essevee", ["zulte-waregem"]);
-      } else if (mode === "club") {
+      if (mode === "club" || mode === "bot") {
+        // Beide beginnen met een clubkeuze; wat er daarna gebeurt hangt
+        // hiervan af.
+        state.pendingMode = mode === "bot" ? "bot" : "online";
+        $("#clubs-title").textContent = mode === "bot"
+          ? "Tegen de bot" : "Kies een club";
+        $("#clubs-eyebrow").textContent = mode === "bot"
+          ? "Alleen spelen" : "Nodig iemand uit";
         showScreen("clubs");
-      } else if (mode === "online") {
-        showOnlineScreen();
       } else if (mode === "belgium") {
+        state.pendingMode = "online";
         const shuffled = shuffle(CLUBS.map((c) => c.id));
-        startGame("belgium", [shuffled[0], shuffled[1]]);
+        createOnlineGame([shuffled[0], shuffled[1]]);
+      } else if (mode === "join") {
+        showOnlineScreen();
       }
     });
   });
@@ -1104,7 +1200,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#club-grid").addEventListener("click", (e) => {
     const btn = e.target.closest(".club-card");
     if (!btn) return;
-    startGame("club", [btn.dataset.club]);
+    if (state.pendingMode === "bot") startBotGame([btn.dataset.club]);
+    else createOnlineGame([btn.dataset.club]);
   });
   $("#back-to-overview").addEventListener("click", (e) => { e.preventDefault(); showScreen("overview"); });
   $("#back-to-overview-2").addEventListener("click", (e) => {
@@ -1114,10 +1211,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     showScreen("overview");
   });
 
-  $("#online-club-grid").addEventListener("click", (e) => {
-    const btn = e.target.closest(".club-card");
-    if (btn) createOnlineGame(btn.dataset.club);
-  });
   $("#online-join").addEventListener("click", () => joinOnlineGame($("#online-code").value));
   $("#online-code").addEventListener("keydown", (e) => {
     if (e.key === "Enter") joinOnlineGame($("#online-code").value);
@@ -1149,6 +1242,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#toggle-solo").addEventListener("click", () => {
     state.solo = !state.solo;
     saveSolo();
+    renderSoloButton();
+    newGame();
+  });
+
+  // Doorklikken door de moeilijkheidsgraden.
+  $("#bot-level").addEventListener("click", () => {
+    const levels = Object.keys(BOT_LEVELS);
+    state.botLevel = levels[(levels.indexOf(state.botLevel) + 1) % levels.length];
+    saveBotLevel();
+    $("#game-eyebrow").textContent = "Tegen de bot · " + BOT_LEVELS[state.botLevel].label;
     renderSoloButton();
     newGame();
   });
