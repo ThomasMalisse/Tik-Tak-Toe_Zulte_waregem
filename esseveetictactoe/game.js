@@ -62,14 +62,39 @@ function suggestPlayers(input, allowed, limit = 8) {
   return exact.concat(starts, contains).slice(0, limit);
 }
 
-/*
- * Namen, nationaliteiten en clublabels komen uit Wikidata en gaan via innerHTML
- * het scherm op. Ze horen als tekst gelezen te worden, niet als HTML — er staan
- * echt dingen als "Brighton & Hove Albion FC" en 'Hendricus "Henk" Heijt' in.
- */
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"]/g, (ch) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+/* =========================================================================
+ *  DOM-opbouw  —  zie SECURITY.md, punt "XSS"
+ *
+ *  Spelersnamen, nationaliteiten en clublabels komen van Wikidata en Wikipedia.
+ *  Dat is data van derden die wij niet controleren: er staan echt dingen in als
+ *  "Brighton & Hove Albion FC" en 'Hendricus "Henk" Heijt', en er kan morgen
+ *  iets ergers in staan omdat iedereen die pagina's kan bewerken.
+ *
+ *  Daarom bouwen we het scherm op met createElement + textContent, en nooit
+ *  door zulke tekst in een HTML-string te plakken. Tekst die via textContent
+ *  binnenkomt wordt door de browser per definitie als tekst behandeld en nooit
+ *  als markup — er valt dus niets te ontsnappen. Dat is sterker dan escapen,
+ *  want je kan niet vergeten te escapen wat je nooit als HTML aanbiedt.
+ * ========================================================================= */
+
+// <tag class="..">tekst</tag>. `text` gaat altijd via textContent.
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = String(text);
+  return node;
+}
+
+// Maakt een element leeg zonder innerHTML te gebruiken.
+function clear(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
+  return node;
+}
+
+function replaceChildren(node, ...children) {
+  clear(node);
+  children.filter(Boolean).forEach((c) => node.appendChild(c));
+  return node;
 }
 
 function shuffle(arr) {
@@ -234,8 +259,10 @@ async function startGame(mode, clubIds) {
   showScreen("game");
 
   // De rosters staan per club in data/; die van dit potje halen we nu op.
-  $("#board-wrap").innerHTML = '<div class="empty-state"><p>Spelers laden…</p></div>';
-  $("#turn").innerHTML = "";
+  const loading = el("div", "empty-state");
+  loading.appendChild(el("p", null, "Spelers laden…"));
+  replaceChildren($("#board-wrap"), loading);
+  clear($("#turn"));
   try {
     await loadRosters(clubIds);
   } catch (err) {
@@ -259,13 +286,15 @@ async function startGame(mode, clubIds) {
  * dan ook, in plaats van een leeg scherm te tonen.
  */
 function showLoadError(err) {
-  $("#load-error").innerHTML = `
-    <div class="load-error-box">
-      <h3>Spelersdata niet geladen</h3>
-      <p>Kon de map <code>data/</code> niet lezen. Draai
-        <code>python3 tools/build_players.py</code> om de database aan te maken.</p>
-      <p class="load-error-detail">${escapeHtml(String(err && err.message ? err.message : err))}</p>
-    </div>`;
+  const box = el("div", "load-error-box");
+  box.appendChild(el("h3", null, "Spelersdata niet geladen"));
+  box.appendChild(el("p", null,
+    "Kon de map data/ niet lezen. Draai python3 tools/build_players.py " +
+    "om de database aan te maken."));
+  // Foutteksten kunnen van buitenaf komen (netwerk, server) -> als tekst tonen.
+  box.appendChild(el("p", "load-error-detail",
+    err && err.message ? err.message : String(err)));
+  replaceChildren($("#load-error"), box);
   $("#load-error").classList.add("open");
 }
 
@@ -385,10 +414,21 @@ function bestKey(mode, clubIds) {
   return storageKey("bke-best", mode, clubIds);
 }
 
+/*
+ * localStorage staat in de browser van de speler en is daar vrij te bewerken
+ * (dev tools -> Application). Wat eruit komt is dus input, geen waarheid: we
+ * accepteren alleen gehele getallen binnen een zinnig bereik. Zie SECURITY.md.
+ */
+const MAX_SCORE = 9999;
+
+function cleanCount(value, max) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= max ? n : 0;
+}
+
 function loadBest(mode, clubIds) {
   try {
-    const n = Number(localStorage.getItem(bestKey(mode, clubIds)));
-    return Number.isFinite(n) ? n : 0;
+    return cleanCount(localStorage.getItem(bestKey(mode, clubIds)), 9);
   } catch (e) { return 0; }
 }
 
@@ -402,10 +442,8 @@ function loadScore(mode, clubIds) {
   const blank = { X: 0, O: 0, draw: 0 };
   try {
     const saved = JSON.parse(localStorage.getItem(scoreKey(mode, clubIds)) || "null");
-    if (!saved) return blank;
-    ["X", "O", "draw"].forEach((k) => {
-      if (Number.isFinite(saved[k])) blank[k] = saved[k];
-    });
+    if (!saved || typeof saved !== "object") return blank;
+    ["X", "O", "draw"].forEach((k) => { blank[k] = cleanCount(saved[k], MAX_SCORE); });
   } catch (e) { /* geen bruikbare bewaarde score */ }
   return blank;
 }
@@ -434,95 +472,82 @@ function filledCells() {
   return state.board.filter((c) => c !== null).length;
 }
 
+// Eén vakje van het scorebord: bovenlabel of speelmerk, getal, onderlabel.
+function scoreBox(className, top, value, bottom, topIsMark) {
+  const box = el("div", "score-box " + className);
+  if (top) box.appendChild(el("span", topIsMark ? "score-mark" : "score-label-top", top));
+  box.appendChild(el("span", "score-num", value));
+  if (bottom) box.appendChild(el("span", "score-label", bottom));
+  return box;
+}
+
 function renderScoreboard() {
   const board = $("#scoreboard");
   if (state.solo) {
-    board.innerHTML = `
-      <div class="score-box score-x">
-        <span class="score-label-top">Vakjes</span>
-        <span class="score-num">${filledCells()}/9</span>
-      </div>
-      <div class="score-box score-draw">
-        <span class="score-label-top">Pogingen</span>
-        <span class="score-num">${state.guessesLeft}</span>
-      </div>
-      <div class="score-box score-o">
-        <span class="score-label-top">Record</span>
-        <span class="score-num">${state.best}</span>
-      </div>`;
+    replaceChildren(board,
+      scoreBox("score-x", "Vakjes", filledCells() + "/9"),
+      scoreBox("score-draw", "Pogingen", state.guessesLeft),
+      scoreBox("score-o", "Record", state.best));
     return;
   }
-  board.innerHTML = `
-    <div class="score-box score-x">
-      <span class="score-mark">X</span>
-      <span class="score-num">${state.score.X}</span>
-      <span class="score-label">Speler 1</span>
-    </div>
-    <div class="score-box score-draw">
-      <span class="score-label-top">Gelijk</span>
-      <span class="score-num">${state.score.draw}</span>
-    </div>
-    <div class="score-box score-o">
-      <span class="score-mark">O</span>
-      <span class="score-num">${state.score.O}</span>
-      <span class="score-label">Speler 2</span>
-    </div>`;
+  replaceChildren(board,
+    scoreBox("score-x", "X", state.score.X, "Speler 1", true),
+    scoreBox("score-draw", "Gelijk", state.score.draw),
+    scoreBox("score-o", "O", state.score.O, "Speler 2", true));
 }
 
 function render() {
   const boardWrap = $("#board-wrap");
 
   if (!state.playable) {
-    boardWrap.innerHTML = `
-      <div class="empty-state">
-        <p>Geen speelbaar raster te maken voor deze club(s).</p>
-        <p class="empty-hint">Er zijn te weinig spelers met bruikbare gegevens. Draai <code>python3 tools/build_players.py</code> opnieuw om de database te verversen.</p>
-      </div>`;
-    $("#turn").innerHTML = "";
+    const box = el("div", "empty-state");
+    box.appendChild(el("p", null,
+      "Geen speelbaar raster te maken voor deze club(s)."));
+    box.appendChild(el("p", "empty-hint",
+      "Er zijn te weinig spelers met bruikbare gegevens. Draai " +
+      "python3 tools/build_players.py opnieuw om de database te verversen."));
+    replaceChildren(boardWrap, box);
+    clear($("#turn"));
     renderScoreboard();
     return;
   }
 
-  boardWrap.innerHTML = `
-    <div class="grid-scroll">
-      <div class="grid">
-        <div id="col-headers" class="col-headers"></div>
-        <div id="board" class="board"></div>
-      </div>
-    </div>`;
+  const scroll = el("div", "grid-scroll");
+  const grid = el("div", "grid");
+  const colHead = el("div", "col-headers");
+  const boardEl = el("div", "board");
+  grid.appendChild(colHead);
+  grid.appendChild(boardEl);
+  scroll.appendChild(grid);
+  replaceChildren(boardWrap, scroll);
 
-  // Kolomkoppen
-  const colHead = $("#col-headers");
-  colHead.innerHTML = '<div class="corner"></div>' +
-    state.cols.map((c) => `<div class="head col-head">${escapeHtml(c.label)}</div>`).join("");
+  // Kolomkoppen. De labels bevatten clubnamen uit Wikidata -> textContent.
+  colHead.appendChild(el("div", "corner"));
+  state.cols.forEach((c) => colHead.appendChild(el("div", "head col-head", c.label)));
 
   // Rijen met rijkop + 3 cellen
-  const boardEl = $("#board");
-  boardEl.innerHTML = "";
   for (let r = 0; r < 3; r++) {
-    boardEl.insertAdjacentHTML(
-      "beforeend",
-      `<div class="head row-head">${escapeHtml(state.rows[r].label)}</div>`
-    );
+    boardEl.appendChild(el("div", "head row-head", state.rows[r].label));
     for (let c = 0; c < 3; c++) {
       const idx = r * 3 + c;
       const cell = state.board[idx];
-      const claimed = cell ? ` claimed ${cell.player === "X" ? "x" : "o"}` : "";
-      let inner;
+      const btn = el("button", "cell" +
+        (cell ? " claimed " + (cell.player === "X" ? "x" : "o") : ""));
+      btn.type = "button";
+      btn.dataset.idx = String(idx);
+      btn.disabled = Boolean(cell) || state.finished;
+
       if (cell) {
-        const mark = state.solo ? "✓" : cell.player;
-        inner = `<span class="mark">${mark}</span><span class="who">${escapeHtml(cell.name)}</span>`;
+        btn.appendChild(el("span", "mark", state.solo ? "✓" : cell.player));
+        btn.appendChild(el("span", "who", cell.name));
       } else if (state.finished) {
         // Potje gedaan: laten zien wat hier had gekund, anders leer je niets
         // van de vakjes die niemand wist.
-        inner = `<span class="solutions">${solutionsLabel(idx)}</span>`;
+        btn.appendChild(el("span", "solutions", solutionsLabel(idx)));
       } else {
-        inner = `<span class="plus">+</span>`;
+        btn.appendChild(el("span", "plus", "+"));
       }
-      boardEl.insertAdjacentHTML(
-        "beforeend",
-        `<button class="cell${claimed}" data-idx="${idx}" ${cell || state.finished ? "disabled" : ""}>${inner}</button>`
-      );
+      boardEl.appendChild(btn);
     }
   }
 
@@ -533,23 +558,26 @@ function render() {
 
   // Beurt / status
   const turnEl = $("#turn");
+  const mark = (p) => (p === "X" ? "x" : "o");
   if (state.solo) {
     const n = filledCells();
     if (state.finished) {
       const record = n >= state.best && n > 0 ? " — nieuw record!" : "";
-      turnEl.innerHTML = `<span class="badge ${n === 9 ? "win-x" : "draw"}">${n}/9 vakjes${record}</span>`;
+      replaceChildren(turnEl,
+        el("span", "badge " + (n === 9 ? "win-x" : "draw"), `${n}/9 vakjes${record}`));
     } else {
-      turnEl.innerHTML = `Nog <span class="badge turn-x">${state.guessesLeft} pogingen</span>`;
+      replaceChildren(turnEl, document.createTextNode("Nog "),
+        el("span", "badge turn-x", `${state.guessesLeft} pogingen`));
     }
   } else if (state.finished) {
     const stuck = state.stuck ? " — geen zetten meer" : "";
-    if (state.winner === "draw") {
-      turnEl.innerHTML = `<span class="badge draw">Gelijkspel!${stuck}</span>`;
-    } else {
-      turnEl.innerHTML = `<span class="badge win-${state.winner === "X" ? "x" : "o"}">Speler ${state.winner} wint!${stuck}</span>`;
-    }
+    replaceChildren(turnEl, state.winner === "draw"
+      ? el("span", "badge draw", "Gelijkspel!" + stuck)
+      : el("span", "badge win-" + mark(state.winner),
+           `Speler ${state.winner} wint!${stuck}`));
   } else {
-    turnEl.innerHTML = `Beurt: <span class="badge turn-${state.current === "X" ? "x" : "o"}">Speler ${state.current}</span>`;
+    replaceChildren(turnEl, document.createTextNode("Beurt: "),
+      el("span", "badge turn-" + mark(state.current), "Speler " + state.current));
   }
 
   // Winnende lijn markeren
@@ -574,7 +602,7 @@ let suggestionIdx = -1;    // welke suggestie is met de pijltjes gemarkeerd
 
 function renderSuggestions() {
   const box = $("#guess-suggestions");
-  box.innerHTML = "";
+  clear(box);
   if (!suggestions.length) {
     box.classList.remove("open");
     return;
@@ -583,9 +611,8 @@ function renderSuggestions() {
     const li = document.createElement("li");
     li.className = "suggestion" + (i === suggestionIdx ? " active" : "");
     li.setAttribute("role", "option");
-    li.innerHTML =
-      `<span class="s-name"></span><span class="s-meta">${POSITION_LABELS[p.pos]} · ${escapeHtml(p.nat)}</span>`;
-    li.querySelector(".s-name").textContent = p.name;
+    li.appendChild(el("span", "s-name", p.name));
+    li.appendChild(el("span", "s-meta", `${POSITION_LABELS[p.pos]} · ${p.nat}`));
     li.addEventListener("mousedown", (e) => {
       e.preventDefault();          // niet de focus uit het invoerveld halen
       pickSuggestion(i);
@@ -775,7 +802,7 @@ function solutionsLabel(idx) {
   if (!options.length) return "—";
   const shown = shuffle(options).slice(0, SOLUTIONS_SHOWN);
   const rest = options.length - shown.length;
-  return escapeHtml(shown.map((p) => p.name).join(", ")) + (rest > 0 ? ` +${rest}` : "");
+  return shown.map((p) => p.name).join(", ") + (rest > 0 ? ` +${rest}` : "");
 }
 
 /* ---------- Scherm-navigatie ---------- */
@@ -804,39 +831,58 @@ function safeColor(c) {
   return /^#[0-9a-f]{3,8}$/i.test(String(c)) ? c : "#888888";
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+// <tag attr=".."> in de SVG-namespace. Attributen worden als string gezet,
+// nooit als markup samengeplakt.
+function svg(tag, attrs) {
+  const node = document.createElementNS(SVG_NS, tag);
+  Object.keys(attrs || {}).forEach((k) => node.setAttribute(k, String(attrs[k])));
+  return node;
+}
+
 function clubKit(club, size = 44) {
   const id = "kit-" + club.id;
   const a = safeColor(club.colors[0]);
   const b = safeColor(club.colors[1]);
   const w = 48 / KIT_STRIPES;
-  const bars = Array.from({ length: KIT_STRIPES }, (_, i) =>
-    `<rect x="${(i * w).toFixed(2)}" width="${w.toFixed(2)}" height="48" ` +
-    `fill="${i % 2 ? b : a}"/>`
-  ).join("");
-  return `<svg class="kit" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true">
-      <clipPath id="${id}"><path d="${KIT_PATH}"/></clipPath>
-      <g clip-path="url(#${id})">${bars}</g>
-      <path d="${KIT_PATH}" fill="none" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/>
-    </svg>`;
+
+  const root = svg("svg", { class: "kit", viewBox: "0 0 48 48",
+                            width: size, height: size, "aria-hidden": "true" });
+  const clip = svg("clipPath", { id });
+  clip.appendChild(svg("path", { d: KIT_PATH }));
+  root.appendChild(clip);
+
+  const stripes = svg("g", { "clip-path": `url(#${id})` });
+  for (let i = 0; i < KIT_STRIPES; i++) {
+    stripes.appendChild(svg("rect", {
+      x: (i * w).toFixed(2), width: w.toFixed(2), height: 48,
+      fill: i % 2 ? b : a,
+    }));
+  }
+  root.appendChild(stripes);
+  root.appendChild(svg("path", { d: KIT_PATH, fill: "none", stroke: "#fff",
+                                 "stroke-width": "2.5", "stroke-linejoin": "round" }));
+  return root;
 }
 
 function renderClubGrid() {
-  const grid = $("#club-grid");
-  grid.innerHTML = CLUBS.map((club) => `
-    <button class="club-card" data-club="${club.id}">
-      ${clubKit(club)}
-      <span class="club-name">${escapeHtml(club.name)}</span>
-    </button>
-  `).join("");
+  const grid = clear($("#club-grid"));
+  CLUBS.forEach((club) => {
+    const card = el("button", "club-card");
+    card.type = "button";
+    card.dataset.club = club.id;
+    card.appendChild(clubKit(club));
+    card.appendChild(el("span", "club-name", club.name));
+    grid.appendChild(card);
+  });
 }
 
 // De shirts van de club(s) van dit potje, boven het bord.
 function renderGameKits(clubIds) {
-  $("#game-kits").innerHTML = clubIds
-    .map((id) => clubById(id))
-    .filter(Boolean)
-    .map((club) => clubKit(club, 56))
-    .join("");
+  const box = clear($("#game-kits"));
+  clubIds.map((id) => clubById(id)).filter(Boolean)
+    .forEach((club) => box.appendChild(clubKit(club, 56)));
 }
 
 /* ---------- Event-koppeling ---------- */

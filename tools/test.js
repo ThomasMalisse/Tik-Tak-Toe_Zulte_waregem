@@ -8,18 +8,34 @@
 const fs = require("fs"), vm = require("vm"), path = require("path");
 const dir = path.join(__dirname, "..", "esseveetictactoe") + path.sep;
 
+// Minimale maar echte DOM-stub: elk element is een apart object met kinderen,
+// zodat de opbouw via createElement/appendChild ook echt uitgevoerd wordt.
+function makeElement(tag) {
+  return {
+    tagName: String(tag).toUpperCase(),
+    children: [], value: "", textContent: "", className: "", disabled: false,
+    type: "", dataset: {}, attrs: {},
+    get firstChild() { return this.children[0] || null; },
+    appendChild(c) { this.children.push(c); return c; },
+    removeChild(c) { this.children = this.children.filter((x) => x !== c); return c; },
+    setAttribute(k, v) { this.attrs[k] = v; },
+    addEventListener() {}, focus() {},
+    querySelector() { return null; },
+    closest() { return null; },
+    classList: { add() {}, remove() {}, toggle() {} },
+  };
+}
+
 function makeCtx() {
   const store = {};
-  const el = {
-    value: "", innerHTML: "", textContent: "", className: "", disabled: false,
-    dataset: {}, addEventListener(){}, appendChild(){}, setAttribute(){},
-    insertAdjacentHTML(){}, querySelector(){ return el; }, focus(){},
-    classList: { add(){}, remove(){}, toggle(){} },
-  };
+  const el = makeElement("div");     // gedeelde stub voor $("...")-lookups
   const ctx = {
-    console, el,
+    console, __testEl: el,
     document: { querySelector: () => el, querySelectorAll: () => [],
-                createElement: () => el, addEventListener: () => {},
+                createElement: (t) => makeElement(t),
+                createElementNS: (_ns, t) => makeElement(t),
+                createTextNode: (t) => ({ textContent: String(t), children: [] }),
+                addEventListener: () => {},
                 documentElement: { style: { setProperty(){} } } },
     window: { scrollTo(){} },
     location: { protocol: "http:" },
@@ -63,7 +79,7 @@ async function playGame(ctx, { solo, mode, clubIds, wrongEvery }) {
     api.openGuess(idx);
     const options = api.allowedForCell(idx);
     const wrong = wrongEvery && turns % wrongEvery === 0;
-    ctx.el.value = wrong || !options.length ? "zzz onbestaande naam" : options[0].name;
+    ctx.__testEl.value = wrong || !options.length ? "zzz onbestaande naam" : options[0].name;
     api.submitGuess();
     turns++;
   }

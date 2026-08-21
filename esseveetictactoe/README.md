@@ -60,6 +60,18 @@ merk gemarkeerd. Kleuren zijn niet beschermd, en ze stonden al in `clubs.json`.
 
 Wil je een ander patroon, pas dan `KIT_PATH` of `KIT_STRIPES` aan.
 
+## Beveiliging
+
+Zie **[SECURITY.md](../SECURITY.md)** in de hoofdmap. Daar staat per punt van de
+security-checklist wat er gedaan is en waar het staat — en, even belangrijk, welke
+punten op een statische site niet kunnen bestaan en waarom niet.
+
+Kort: het scherm wordt volledig opgebouwd met `createElement` + `textContent`
+(nooit `innerHTML`), omdat alle spelersnamen van Wikidata en Wikipedia komen en
+dus data van derden zijn. Alle binnenkomende JSON wordt gevalideerd voor ze het
+spel in mag, en `vercel.json` zet een streng Content-Security-Policy plus de
+bijhorende headers.
+
 ## Techniek
 
 Pure HTML/CSS/JavaScript, geen build-stap, geen dependencies.
@@ -96,9 +108,23 @@ zowat elk raster uit clubcriteria.
 ### Database: gegenereerd uit Wikidata
 
 De inhoud van `data/` wordt **automatisch gegenereerd** — pas het niet met de hand aan.
-De data komt van [Wikidata](https://www.wikidata.org) (property `P54`, "lid van
-sportteam"), dat per club alle spelers uit heel zijn geschiedenis bijhoudt, met
-de jaren waarin ze er speelden. Wikidata staat onder CC0, dus vrij te gebruiken.
+De data komt uit **twee bronnen**, allebei vrij te gebruiken:
+
+1. **Wikidata** (property `P54`, "lid van sportteam") — geeft per club de spelers
+   mét de jaren waarin ze er speelden. CC0.
+2. **De Engelse Wikipedia**, categorie `<club> players` — geeft *wie* er gespeeld
+   heeft. CC BY-SA.
+
+Die tweede bron is nodig omdat `P54` grote gaten heeft: het item van Cameron
+Puertas bevat geen enkele club, dus via Wikidata alleen zou hij nergens opduiken.
+De categorieën worden veel trouwer bijgehouden. Samen leveren ze ruim 4400
+spelers in plaats van 3800; per club scheelt dat 30 tot 110 namen.
+
+Spelers die alleen uit de categorie komen, krijgen wél positie, nationaliteit en
+hun andere clubs (die staan los in Wikidata), maar **geen jaartallen** — die
+zitten uitsluitend in de `P54`-kwalificaties die voor hen ontbreken. Ze doen dus
+niet mee aan de "Jaren …"-criteria. Ongeveer een kwart van de rijen zit in dat
+geval; `--report` toont hoeveel per club.
 
 Opnieuw ophalen (duurt enkele minuten; enkel `curl` en `python3` nodig):
 
@@ -110,11 +136,12 @@ Het script:
 
 1. vraagt per club (via de QID's bovenaan `tools/build_players.py`) alle spelers
    op met positie, nationaliteit en de jaren bij die club;
-2. haalt in blokken van 100 spelers hun volledige clubcarrière op, voor het
-   "Ook bij …"-criterium;
-3. gooit spelers weg zonder bruikbare positie of nationaliteit, en clubs waar
+2. haalt de Wikipedia-categorie van die club op en zoekt de spelers erbij die
+   Wikidata niet aan de club koppelt;
+3. haalt in blokken hun volledige clubcarrière op, voor het "Ook bij …"-criterium;
+4. gooit spelers weg zonder bruikbare positie of nationaliteit, en clubs waar
    minder dan 3 spelers uit de database ooit speelden;
-4. schrijft `esseveetictactoe/data/clubs.json`, per club een
+5. schrijft `esseveetictactoe/data/clubs.json`, per club een
    `esseveetictactoe/data/<club-id>.json`, en `data/bundle.js` met alles samen.
 
 Per speler: `name`, `pos` (`GK`/`DEF`/`MID`/`FWD`), `nat`, `from` en `to`

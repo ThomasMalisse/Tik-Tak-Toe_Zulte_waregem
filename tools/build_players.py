@@ -29,24 +29,41 @@ OVERRIDES = Path(__file__).resolve().parent / "overrides.json"
 # teruggeven die niet meer overeenkomt met wat het script nu zou ophalen.
 CACHE_VERSION = 2
 
-# id, weergavenaam, Wikidata-QID, clubkleuren
+# id, weergavenaam, Wikidata-QID, clubkleuren, en de categorie op de Engelse
+# Wikipedia die de spelers van die club opsomt (tweede bron, zie fetch_extra).
 CLUBS = [
-    ("zulte-waregem", "Zulte Waregem",    "Q376635",  ["#d81f2a", "#1a7a3c"]),
-    ("club-brugge",   "Club Brugge",      "Q190916",  ["#0f56a3", "#111111"]),
-    ("anderlecht",    "Anderlecht",       "Q187528",  ["#6f2c91", "#f0b90b"]),
-    ("krc-genk",      "KRC Genk",         "Q216032",  ["#0c3f91", "#4fb8e8"]),
-    ("standard",      "Standard Luik",    "Q190561",  ["#d81f2a", "#111111"]),
-    ("antwerp",       "Royal Antwerp",    "Q732002",  ["#a3121a", "#111111"]),
-    ("kaa-gent",      "KAA Gent",         "Q18232",   ["#0c3f91", "#111111"]),
-    ("charleroi",     "Charleroi",        "Q19585",   ["#111111", "#c8102e"]),
-    ("cercle-brugge", "Cercle Brugge",    "Q364698",  ["#1a7a3c", "#111111"]),
-    ("union-sg",      "Union SG",         "Q196160",  ["#f0b90b", "#0c3f91"]),
-    ("stvv",          "STVV",             "Q138248",  ["#f0d80b", "#111111"]),
-    ("westerlo",      "KV Westerlo",      "Q849544",  ["#f0b90b", "#0c3f91"]),
-    ("mechelen",      "KV Mechelen",      "Q113000",  ["#f0d80b", "#c8102e"]),
-    ("ohl",           "OH Leuven",        "Q916199",  ["#0c3f91", "#111111"]),
-    ("raal",          "RAAL La Louvière", "Q536651",  ["#c8102e", "#f0b90b"]),
-    ("dender",        "FCV Dender",       "Q1065328", ["#f0913a", "#111111"]),
+    ("zulte-waregem", "Zulte Waregem",    "Q376635",  ["#d81f2a", "#1a7a3c"],
+     "SV Zulte Waregem players"),
+    ("club-brugge",   "Club Brugge",      "Q190916",  ["#0f56a3", "#111111"],
+     "Club Brugge KV players"),
+    ("anderlecht",    "Anderlecht",       "Q187528",  ["#6f2c91", "#f0b90b"],
+     "RSC Anderlecht players"),
+    ("krc-genk",      "KRC Genk",         "Q216032",  ["#0c3f91", "#4fb8e8"],
+     "KRC Genk players"),
+    ("standard",      "Standard Luik",    "Q190561",  ["#d81f2a", "#111111"],
+     "Standard Liège players"),
+    ("antwerp",       "Royal Antwerp",    "Q732002",  ["#a3121a", "#111111"],
+     "Royal Antwerp FC players"),
+    ("kaa-gent",      "KAA Gent",         "Q18232",   ["#0c3f91", "#111111"],
+     "KAA Gent players"),
+    ("charleroi",     "Charleroi",        "Q19585",   ["#111111", "#c8102e"],
+     "Royal Charleroi SC players"),
+    ("cercle-brugge", "Cercle Brugge",    "Q364698",  ["#1a7a3c", "#111111"],
+     "Cercle Brugge KSV players"),
+    ("union-sg",      "Union SG",         "Q196160",  ["#f0b90b", "#0c3f91"],
+     "Royale Union Saint-Gilloise players"),
+    ("stvv",          "STVV",             "Q138248",  ["#f0d80b", "#111111"],
+     "Sint-Truidense VV players"),
+    ("westerlo",      "KV Westerlo",      "Q849544",  ["#f0b90b", "#0c3f91"],
+     "KVC Westerlo players"),
+    ("mechelen",      "KV Mechelen",      "Q113000",  ["#f0d80b", "#c8102e"],
+     "KV Mechelen players"),
+    ("ohl",           "OH Leuven",        "Q916199",  ["#0c3f91", "#111111"],
+     "Oud-Heverlee Leuven players"),
+    ("raal",          "RAAL La Louvière", "Q536651",  ["#c8102e", "#f0b90b"],
+     "RAAL La Louvière players"),
+    ("dender",        "FCV Dender",       "Q1065328", ["#f0913a", "#111111"],
+     "FCV Dender EH players"),
 ]
 
 # Wikidata-positielabels (nl/en) -> onze vier posities. In deze volgorde
@@ -157,6 +174,306 @@ SELECT ?p ?otherLabel WHERE {
 CAREER_CHUNK = 40
 
 
+WIKI_API = "https://en.wikipedia.org/w/api.php"
+
+
+def wiki_api(**params):
+    """Roept de MediaWiki-API aan; geeft de JSON terug."""
+    params["format"] = "json"
+    url = WIKI_API + "?" + urllib.parse.urlencode(params)
+    cmd = ["curl", "-sS", "--fail", "--max-time", "90", "-A", UA, url]
+    for attempt in range(5):
+        try:
+            return json.loads(subprocess.run(cmd, capture_output=True, check=True).stdout,
+                              strict=False)
+        except Exception as exc:
+            if attempt == 4:
+                raise
+            wait = 3 * 2 ** attempt
+            print(f"    ! wikipedia: {type(exc).__name__} — opnieuw over {wait}s",
+                  file=sys.stderr)
+            time.sleep(wait)
+
+
+def category_qids(category):
+    """Wikidata-QID's van alle spelers in een Wikipedia-categorie.
+
+    Wikidata's P54 ("lid van sportteam") is lang niet volledig — Cameron Puertas
+    heeft er bijvoorbeeld geen enkele club in staan. De categorieen op de Engelse
+    Wikipedia worden veel trouwer bijgehouden, dus die gebruiken we erbij om te
+    weten *wie* er gespeeld heeft. De gegevens zelf komen daarna weer uit Wikidata.
+    """
+    qids = set()
+    cont = {}
+    while True:
+        d = wiki_api(action="query", generator="categorymembers",
+                     gcmtitle="Category:" + category, gcmlimit="500",
+                     gcmnamespace="0", prop="pageprops", ppprop="wikibase_item",
+                     **cont)
+        for page in d.get("query", {}).get("pages", {}).values():
+            item = page.get("pageprops", {}).get("wikibase_item")
+            if item:
+                qids.add(item)
+        if "continue" not in d:
+            return qids
+        cont = d["continue"]
+        time.sleep(0.5)
+
+
+# Gegevens van spelers die we via de categorie vonden maar niet via P54. Ze
+# krijgen geen jaartallen: die staan alleen in de P54-kwalificaties, en die
+# ontbreken nu net. Wel positie, nationaliteit en hun andere clubs.
+EXTRA_QUERY = """
+SELECT ?p ?pLabel ?posLabel ?natLabel WHERE {
+  VALUES ?p { %s }
+  ?p wdt:P21 wd:Q6581097 .
+  OPTIONAL { ?p wdt:P413 ?pos. }
+  OPTIONAL { ?p wdt:P27 ?nat. }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "nl,en". }
+}
+"""
+
+EXTRA_CHUNK = 100
+
+
+def fetch_extra(club_qid, category, known):
+    """Spelers uit de Wikipedia-categorie die nog niet uit P54 kwamen."""
+    cached = CACHE / f"{club_qid}-cat-v{CACHE_VERSION}.json"
+    if cached.exists():
+        raw = json.loads(cached.read_text(encoding="utf-8"))
+    else:
+        wanted = sorted(category_qids(category) - set(known))
+        raw = {}
+        for i in range(0, len(wanted), EXTRA_CHUNK):
+            chunk = " ".join("wd:" + q for q in wanted[i:i + EXTRA_CHUNK])
+            for row in sparql(EXTRA_QUERY % chunk):
+                pid = val(row, "p").rsplit("/", 1)[-1]
+                name = val(row, "pLabel")
+                if not name or re.fullmatch(r"Q\d+", name):
+                    continue
+                e = raw.setdefault(pid, {"name": name, "positions": [], "nats": [],
+                                         "from": None, "to": None, "clubs": []})
+                if val(row, "posLabel") and val(row, "posLabel") not in e["positions"]:
+                    e["positions"].append(val(row, "posLabel"))
+                if val(row, "natLabel") and val(row, "natLabel") not in e["nats"]:
+                    e["nats"].append(val(row, "natLabel"))
+            time.sleep(0.5)
+
+        # Hun overige clubs, voor het "Ook bij ..."-criterium.
+        ids = list(raw)
+        for i in range(0, len(ids), CAREER_CHUNK):
+            chunk = " ".join("wd:" + pid for pid in ids[i:i + CAREER_CHUNK])
+            for row in sparql(CAREER_QUERY % (chunk, club_qid)):
+                pid = val(row, "p").rsplit("/", 1)[-1]
+                other = val(row, "otherLabel")
+                if pid in raw and other and not re.fullmatch(r"Q\d+", other) \
+                        and other not in raw[pid]["clubs"]:
+                    raw[pid]["clubs"].append(other)
+            time.sleep(0.5)
+        cached.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    return {pid: {**p, "positions": set(p["positions"]), "nats": set(p["nats"]),
+                  "clubs": set(p["clubs"])}
+            for pid, p in raw.items()}
+
+
+# ---------------------------------------------------------------------------
+# Derde bron: de carriere-infobox op de Engelse Wikipedia.
+#
+# Wikidata's P54-kwalificaties bevatten de jaartallen, maar juist voor de
+# spelers die we via de categorie vonden ontbreken die. De infobox van hun
+# artikel heeft ze wel ("years2 = 2022-2024 | clubs2 = [[...Union...]]").
+# Datzelfde blok geeft ook een veel specifiekere positie ("Attacking
+# midfielder", "Centre-back") dan de vier grove waarden van P413.
+# ---------------------------------------------------------------------------
+
+# Infoboxlabels -> onze vier posities. Volgorde telt: "Defensive midfielder"
+# moet MID worden, niet DEF, en "wing-back" juist wel DEF.
+INFOBOX_POSITIONS = {
+    "GK":  ["goalkeeper"],
+    "MID": ["midfielder", "midfield", "playmaker"],
+    "DEF": ["back", "defender", "sweeper", "libero", "stopper"],
+    "FWD": ["winger", "forward", "striker", "wing"],
+}
+
+
+def infobox_body(text):
+    """Het blok van {{Infobox football biography ...}}, met genest haakjeswerk."""
+    i = text.lower().find("{{infobox football biography")
+    if i < 0:
+        return ""
+    depth, j = 0, i
+    while j < len(text):
+        if text.startswith("{{", j):
+            depth += 1
+            j += 2
+        elif text.startswith("}}", j):
+            depth -= 1
+            j += 2
+            if depth == 0:
+                return text[i:j]
+        else:
+            j += 1
+    return text[i:]
+
+
+def infobox_fields(text):
+    """{veldnaam: waarde} uit de infobox; sjablonen en links blijven intact."""
+    body = infobox_body(text)
+    if not body:
+        return {}
+    fields, depth, link, buf = {}, 0, 0, []
+    parts = []
+    k = 0
+    while k < len(body):
+        two = body[k:k + 2]
+        if two == "{{":
+            depth += 1; buf.append(two); k += 2
+        elif two == "}}":
+            depth -= 1; buf.append(two); k += 2
+        elif two == "[[":
+            link += 1; buf.append(two); k += 2
+        elif two == "]]":
+            link -= 1; buf.append(two); k += 2
+        elif body[k] == "|" and depth == 1 and link == 0:
+            parts.append("".join(buf)); buf = []; k += 1
+        else:
+            buf.append(body[k]); k += 1
+    parts.append("".join(buf))
+    for part in parts[1:]:
+        if "=" not in part:
+            continue
+        key, _, value = part.partition("=")
+        fields[key.strip().lower()] = value.strip()
+    return fields
+
+
+LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
+REF_RE = re.compile(r"<ref[^>]*?/>|<ref.*?</ref>", re.S | re.I)
+
+
+def parse_years(value):
+    """'2022-2024' -> (2022, 2024); '2024-' -> (2024, None); '2020-21' -> (2020, 2021)."""
+    v = REF_RE.sub("", value).replace("&ndash;", "-").replace("\u2013", "-").replace("\u2014", "-")
+    m = re.search(r"(\d{4})\s*(-)?\s*(\d{2,4})?", v)
+    if not m:
+        return None
+    start, dash, end = int(m.group(1)), m.group(2), m.group(3)
+    if end is None:
+        return (start, None) if dash else (start, start)
+    end = int(end)
+    if end < 100:                       # seizoensnotatie: 2020-21
+        end += start - start % 100
+        if end < start:
+            end += 100
+    return (start, end)
+
+
+def infobox_position(fields):
+    raw = LINK_RE.sub(r"\1", REF_RE.sub("", fields.get("position", ""))).lower()
+    for code, needles in INFOBOX_POSITIONS.items():
+        if any(n in raw for n in needles):
+            return code
+    return None
+
+
+def infobox_career(fields, accepted):
+    """(van, tot) voor de eerste periode bij een van de `accepted` clubtitels."""
+    spells = []
+    for key, value in fields.items():
+        m = re.fullmatch(r"years(\d+)", key)
+        if not m:
+            continue
+        clubs = fields.get("clubs" + m.group(1), "")
+        targets = {t.strip().replace("_", " ") for t in LINK_RE.findall(clubs)}
+        if not targets & accepted:
+            continue
+        years = parse_years(value)
+        if years:
+            spells.append(years)
+    if not spells:
+        return None
+    start = min(s for s, _ in spells)
+    ends = [e for _, e in spells]
+    return (start, None if any(e is None for e in ends) else max(ends))
+
+
+def club_title_aliases(title):
+    """De artikeltitel plus alles wat ernaar doorverwijst."""
+    names = {title.replace("_", " ")}
+    d = wiki_api(action="query", prop="redirects", titles=title, rdlimit="500")
+    for page in d.get("query", {}).get("pages", {}).values():
+        for r in page.get("redirects", []):
+            names.add(r["title"].replace("_", " "))
+    return names
+
+
+def wiki_titles(qids):
+    """{Wikidata-QID: titel op de Engelse Wikipedia}"""
+    out = {}
+    qids = list(qids)
+    for i in range(0, len(qids), 50):
+        url = ("https://www.wikidata.org/w/api.php?action=wbgetentities"
+               "&props=sitelinks&sitefilter=enwiki&format=json&ids=" +
+               "|".join(qids[i:i + 50]))
+        d = json.loads(subprocess.run(
+            ["curl", "-sS", "--fail", "--max-time", "90", "-A", UA, url],
+            capture_output=True, check=True).stdout, strict=False)
+        for qid, e in d.get("entities", {}).items():
+            sl = e.get("sitelinks", {}).get("enwiki")
+            if sl:
+                out[qid] = sl["title"]
+        time.sleep(0.4)
+    return out
+
+
+def fetch_infoboxes(club_qid, club_title, qids):
+    """{QID: {"pos": .., "from": .., "to": ..}} uit de Wikipedia-infoboxen."""
+    cached = CACHE / f"{club_qid}-box-v{CACHE_VERSION}.json"
+    if cached.exists():
+        return json.loads(cached.read_text(encoding="utf-8"))
+
+    accepted = club_title_aliases(club_title)
+    titles = wiki_titles(qids)
+    by_title = {t: q for q, t in titles.items()}
+    result = {}
+    names = list(by_title)
+    for i in range(0, len(names), 25):
+        # rvsection=0 haalt enkel de kop van het artikel op — daar zit de
+        # infobox in, en het scheelt een veelvoud aan verkeer.
+        d = wiki_api(action="query", titles="|".join(names[i:i + 25]),
+                     prop="revisions", rvprop="content", rvslots="main",
+                     rvsection="0", redirects="1")
+        norm = {}
+        for n in d.get("query", {}).get("normalized", []) + d.get("query", {}).get("redirects", []):
+            norm[n["to"]] = n["from"]
+        for page in d.get("query", {}).get("pages", {}).values():
+            try:
+                text = page["revisions"][0]["slots"]["main"]["*"]
+            except (KeyError, IndexError):
+                continue
+            title = page["title"]
+            qid = by_title.get(title) or by_title.get(norm.get(title, ""))
+            if not qid:
+                continue
+            fields = infobox_fields(text)
+            if not fields:
+                continue
+            entry = {}
+            pos = infobox_position(fields)
+            if pos:
+                entry["pos"] = pos
+            span = infobox_career(fields, accepted)
+            if span:
+                entry["from"], entry["to"] = span
+            if entry:
+                result[qid] = entry
+        time.sleep(0.4)
+
+    cached.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    return result
+
+
 def fetch_club(qid):
     """Geeft {qid: speler-dict} voor een club, met cache op schijf.
 
@@ -219,7 +536,7 @@ SELECT ?club ?clubLabel WHERE {
 def club_aliases():
     """{Wikidata-label: onze weergavenaam} voor de 16 clubs uit CLUBS."""
     values = " ".join("wd:" + c[2] for c in CLUBS)
-    display = {qid: name for _id, name, qid, _c in CLUBS}
+    display = {qid: name for _id, name, qid, _c, _cat in CLUBS}
     aliases = {}
     for row in sparql(LABEL_QUERY % values):
         qid = val(row, "club").rsplit("/", 1)[-1]
@@ -245,7 +562,7 @@ def apply_overrides(rosters, ov):
     lang niet elke passage staat erin. Die gaten repareren we hier in plaats
     van in de gegenereerde bestanden, zodat ze een volgende run overleven.
     """
-    display = {cid: name for cid, name, _q, _c in CLUBS}
+    display = {cid: name for cid, name, _q, _c, _cat in CLUBS}
 
     # 1. Spelers verwijderen die bij een club niet thuishoren.
     for club_id, names in (ov.get("remove") or {}).items():
@@ -322,15 +639,27 @@ def report():
 
     per_label = defaultdict(list)
     no_year = defaultdict(list)
-    for club_id, name, qid, _colors in CLUBS:
-        cached = CACHE / f"{qid}-v{CACHE_VERSION}.json"
-        if not cached.exists():
-            print(f"! geen cache voor {name}; draai eerst build_players.py", file=sys.stderr)
+    rows = 0
+    for club_id, name, qid, _colors, _cat in CLUBS:
+        # Beide bronnen: P54 en de Wikipedia-categorie.
+        for suffix in ("", "-cat"):
+            cached = CACHE / f"{qid}{suffix}-v{CACHE_VERSION}.json"
+            if not cached.exists():
+                continue
+            for pid, p in json.loads(cached.read_text(encoding="utf-8")).items():
+                poss = set(p["positions"])
+                if poss & SHAKY and not (poss - SHAKY):
+                    per_label[", ".join(sorted(poss))].append((p["name"], name))
+
+        # Jaartallen lezen we uit de gegenereerde data: daar zitten ook de
+        # handmatige correcties in verwerkt.
+        out = DATA / f"{club_id}.json"
+        if not out.exists():
+            print(f"! nog geen data/{club_id}.json; draai eerst build_players.py",
+                  file=sys.stderr)
             return
-        for pid, p in json.loads(cached.read_text(encoding="utf-8")).items():
-            poss = set(p["positions"])
-            if poss & SHAKY and not (poss - SHAKY):
-                per_label[", ".join(sorted(poss))].append((p["name"], name))
+        for p in json.loads(out.read_text(encoding="utf-8")):
+            rows += 1
             if p["from"] is None and p["to"] is None:
                 no_year[name].append(p["name"])
 
@@ -350,7 +679,10 @@ def report():
     n = sum(len(v) for v in no_year.values())
     for club, names in sorted(no_year.items(), key=lambda kv: -len(kv[1])):
         print(f"   {club}: {len(names)}")
-    print(f"\ntotaal: {n} van de 5089 rijen")
+    print(f"\ntotaal: {n} van de {rows} rijen "
+          f"({100 * n // max(rows, 1)}%) — vooral spelers die enkel via de "
+          f"Wikipedia-categorie gevonden zijn, want jaartallen zitten alleen in "
+          f"de P54-kwalificaties van Wikidata")
 
 
 def main():
@@ -360,9 +692,12 @@ def main():
     aliases = club_aliases()
     rosters = {}
 
-    for club_id, name, qid, _colors in CLUBS:
+    for club_id, name, qid, _colors, category in CLUBS:
         print(f"-> {name} ({qid})", file=sys.stderr)
         raw = fetch_club(qid)
+        n_p54 = len(raw)
+        extra = fetch_extra(qid, category, raw.keys())
+        raw.update(extra)
         roster = []
         for pid, p in raw.items():
             pos = map_position(p["positions"])
@@ -381,9 +716,29 @@ def main():
                 "to": p["to"],
                 "clubs": others,
             })
+        # Derde bron: de Wikipedia-infobox. Die geeft de jaartallen die in
+        # Wikidata ontbreken, en een specifiekere positie dan P413.
+        club_title = category[: -len(" players")]
+        boxes = fetch_infoboxes(qid, club_title,
+                                [p["id"] for p in roster if not p["id"].startswith("extra:")])
+        gained_pos = gained_years = 0
+        for p in roster:
+            box = boxes.get(p["id"])
+            if not box:
+                continue
+            if box.get("pos") and box["pos"] != p["pos"]:
+                p["pos"] = box["pos"]
+                gained_pos += 1
+            if "from" in box:
+                if p["from"] is None and p["to"] is None:
+                    gained_years += 1
+                p["from"], p["to"] = box["from"], box["to"]
+
         roster.sort(key=lambda r: r["name"])
         rosters[club_id] = roster
-        print(f"   {len(roster)} spelers (van {len(raw)} ruw)", file=sys.stderr)
+        print(f"   {len(roster)} spelers  (Wikidata {n_p54} + Wikipedia {len(extra)} "
+              f"= {len(raw)} ruw)  infobox: {gained_years} jaartallen, "
+              f"{gained_pos} posities bijgesteld", file=sys.stderr)
         time.sleep(1)
 
     print("-> handmatige correcties (tools/overrides.json)", file=sys.stderr)
@@ -413,12 +768,12 @@ def write_data(rosters):
     """Schrijft data/clubs.json en per club een data/<id>.json."""
     DATA.mkdir(exist_ok=True)
     clubs = [{"id": cid, "name": name, "colors": colors}
-             for cid, name, _qid, colors in CLUBS]
+             for cid, name, _qid, colors, _cat in CLUBS]
     (DATA / "clubs.json").write_text(
         json.dumps(clubs, ensure_ascii=False, indent=1), encoding="utf-8")
 
     trimmed = {}
-    for cid, name, _qid, _colors in CLUBS:
+    for cid, name, _qid, _colors, _cat in CLUBS:
         roster = [{k: p[k] for k in ("name", "pos", "nat", "from", "to", "clubs")}
                   for p in rosters.get(cid, [])]
         trimmed[cid] = roster

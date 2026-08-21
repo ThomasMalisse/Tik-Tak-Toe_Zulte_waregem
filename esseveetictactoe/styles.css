@@ -133,6 +133,22 @@ body {
 .mode-dark { background: var(--card-dark); color: #fff; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3); }
 .mode-dark .mode-desc { color: #c9c9c3; }
 
+/*
+ * Clubkleuren als klassen in plaats van style="background:..." in de HTML.
+ * Zo hoeft het Content-Security-Policy geen 'unsafe-inline' toe te laten voor
+ * stijlen — zie SECURITY.md.
+ */
+.sw-red    { background: #d81f2a; }
+.sw-green  { background: #1a7a3c; }
+.sw-blue   { background: #0f56a3; }
+.sw-purple { background: #6f2c91; }
+.sw-yellow { background: #f0b90b; }
+.sw-navy   { background: #0c3f91; }
+.sw-black  { background: #111111; }
+.sw-sky    { background: #4fb8e8; }
+.dash-gc1  { background: var(--gc1); }
+.dash-gc2  { background: var(--gc2); }
+
 .swatch-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatch-row .swatch { width: 26px; height: 16px; border-radius: 4px; }
 .swatch-row-5 { max-width: 130px; }

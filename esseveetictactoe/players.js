@@ -23,6 +23,69 @@
 let CLUBS = [];
 const ROSTERS = {};   // club-id -> spelerslijst, gevuld zodra ze opgehaald is
 
+/* -------------------------------------------------------------------------
+ *  Validatie van binnenkomende data  —  zie SECURITY.md, punt "Datavalidatie"
+ *
+ *  De JSON komt over het netwerk binnen. Ook al genereren wij die bestanden
+ *  zelf, het spel hoort niet blind te vertrouwen wat er terugkomt: een verkeerd
+ *  bestand, een half doorgekomen antwoord of een tussenpersoon die knoeit mag
+ *  hooguit tot "geen data" leiden, niet tot rare toestanden in het spel.
+ *
+ *  We laten alleen door wat we verwachten, en gooien de rest weg.
+ * ------------------------------------------------------------------------- */
+
+const POSITIONS = ["GK", "DEF", "MID", "FWD"];
+const HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/;
+const CLUB_ID = /^[a-z0-9-]{1,40}$/;
+const MAX_TEXT = 120;          // langste naam/nationaliteit die we accepteren
+const MAX_CLUBS = 60;          // "ook bij"-lijst per speler
+const MAX_ROSTER = 5000;       // spelers per club
+
+function cleanText(value) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text || text.length > MAX_TEXT) return null;
+  return text;
+}
+
+function cleanYear(value) {
+  return Number.isInteger(value) && value >= 1850 && value <= 2100 ? value : null;
+}
+
+function cleanClub(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = typeof raw.id === "string" && CLUB_ID.test(raw.id) ? raw.id : null;
+  const name = cleanText(raw.name);
+  const colors = Array.isArray(raw.colors)
+    ? raw.colors.filter((c) => typeof c === "string" && HEX_COLOR.test(c)).slice(0, 2)
+    : [];
+  if (!id || !name || colors.length !== 2) return null;
+  return { id, name, colors };
+}
+
+function cleanPlayer(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const name = cleanText(raw.name);
+  const nat = cleanText(raw.nat);
+  if (!name || !nat || !POSITIONS.includes(raw.pos)) return null;
+  const clubs = Array.isArray(raw.clubs)
+    ? raw.clubs.map(cleanText).filter(Boolean).slice(0, MAX_CLUBS)
+    : [];
+  return { name, pos: raw.pos, nat, from: cleanYear(raw.from), to: cleanYear(raw.to), clubs };
+}
+
+function cleanClubs(raw) {
+  if (!Array.isArray(raw)) throw new Error("clubs.json heeft niet de verwachte vorm");
+  const clubs = raw.map(cleanClub).filter(Boolean);
+  if (!clubs.length) throw new Error("clubs.json bevat geen bruikbare clubs");
+  return clubs;
+}
+
+function cleanRoster(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_ROSTER).map(cleanPlayer).filter(Boolean);
+}
+
 /*
  * Open je index.html rechtstreeks vanaf schijf, dan blokkeert de browser elke
  * fetch naar een lokaal bestand. Een <script>-tag mag daar wél, dus laden we
@@ -49,8 +112,22 @@ function loadBundle() {
   return bundlePromise;
 }
 
+/*
+ * Alleen eigen bestanden onder data/ ophalen. `credentials: "omit"` en
+ * `mode: "same-origin"` maken expliciet wat we willen: geen cookies mee,
+ * en niets van een andere host — ook niet als er ooit een omleiding tussen komt.
+ */
+function dataUrl(file) {
+  if (!/^[a-z0-9-]{1,40}\.json$/.test(file)) {
+    throw new Error("ongeldige databestandsnaam: " + file);
+  }
+  return "data/" + file;
+}
+
 async function fetchJson(path) {
-  const res = await fetch(path, { cache: "no-cache" });
+  const res = await fetch(path, {
+    cache: "no-cache", credentials: "omit", mode: "same-origin", redirect: "error",
+  });
   if (!res.ok) throw new Error(`${path}: ${res.status}`);
   return res.json();
 }
@@ -62,8 +139,8 @@ let clubsPromise = null;
 function loadClubs() {
   if (!clubsPromise) {
     clubsPromise = LOCAL_FILE
-      ? loadBundle().then((data) => (CLUBS = data.clubs))
-      : fetchJson("data/clubs.json").then((clubs) => (CLUBS = clubs));
+      ? loadBundle().then((data) => (CLUBS = cleanClubs(data.clubs)))
+      : fetchJson(dataUrl("clubs.json")).then((clubs) => (CLUBS = cleanClubs(clubs)));
   }
   return clubsPromise;
 }
@@ -78,11 +155,13 @@ async function loadRosters(clubIds) {
   if (!missing.length) return;
   if (LOCAL_FILE) {
     const data = await loadBundle();
-    missing.forEach((id) => { ROSTERS[id] = data.rosters[id] || []; });
+    missing.forEach((id) => { ROSTERS[id] = cleanRoster(data.rosters[id]); });
     return;
   }
   await Promise.all(
-    missing.map(async (id) => { ROSTERS[id] = await fetchJson(`data/${id}.json`); })
+    missing.map(async (id) => {
+      ROSTERS[id] = cleanRoster(await fetchJson(dataUrl(id + ".json")));
+    })
   );
 }
 
