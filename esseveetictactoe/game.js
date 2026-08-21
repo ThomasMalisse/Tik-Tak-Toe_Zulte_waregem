@@ -468,8 +468,13 @@ function applyRemoteGame(record) {
   state.finished = Boolean(record.finished);
   state.winner = record.winner || null;
   state.opponentJoined = Boolean(record.joined);
+  // steals_on en de tellers bestaan pas na schema-v2.sql; zonder dat schema
+  // speel je gewoon zonder stelen.
   state.stealsOn = Boolean(record.steals_on);
-  state.steals = { X: cleanCount(record.x_steals, 3), O: cleanCount(record.o_steals, 3) };
+  state.steals = {
+    X: record.x_steals === undefined ? 3 : cleanCount(record.x_steals, 3),
+    O: record.o_steals === undefined ? 3 : cleanCount(record.o_steals, 3),
+  };
   state.rematchCode = record.rematch_code || null;
   render();
   renderSoloButton();
@@ -1297,7 +1302,7 @@ async function vraagRematch() {
     $("#online-link").value = onlineShareUrl(ONLINE.code);
     showOnlineScreen("waiting");
   } catch (err) {
-    $("#turn").appendChild(el("span", "share-note", " " + err.message));
+    replaceChildren($("#turn"), el("span", "badge draw", err.message));
   } finally {
     knop.disabled = false;
   }

@@ -33,6 +33,25 @@ function onlineClient() {
   return ONLINE.client;
 }
 
+/* ---------- Welke versie van het schema draait er? ---------- */
+
+/*
+ * De uitbreidingen (steals, rematch, tegen een onbekende) zitten in
+ * supabase/schema-v2.sql. Draait die nog niet, dan moet het gewone online
+ * spelen gewoon blijven werken — een half uitgerolde database mag de app niet
+ * platleggen. Daarom proberen we de nieuwe aanroep en vallen we terug op de
+ * oude als de functie er niet is.
+ */
+let ONLINE_V2 = null;    // null = nog niet uitgezocht
+
+function isMissingFunction(error) {
+  return Boolean(error) && (error.code === "PGRST202" ||
+    /Could not find the function/i.test(error.message || ""));
+}
+
+const V2_NODIG = "Deze functie heeft supabase/schema-v2.sql nodig. " +
+                 "Draai dat script in de SQL Editor van je project.";
+
 /* ---------- Codes en geheimen ---------- */
 
 // Leesbare code zonder tekens die je kan verwarren (0/O, 1/I).
@@ -78,11 +97,20 @@ function recallToken(code) {
 async function onlineCreate(clubIds, rowIds, colIds, wantedCode, opties = {}) {
   const code = wantedCode || newCode();
   const token = newToken();
-  const { data, error } = await onlineClient().rpc("create_game", {
-    p_code: code, p_club_ids: clubIds,
-    p_row_ids: rowIds, p_col_ids: colIds, p_token: token,
-    p_steals: Boolean(opties.steals), p_open: Boolean(opties.open),
-  });
+  const basis = { p_code: code, p_club_ids: clubIds,
+                  p_row_ids: rowIds, p_col_ids: colIds, p_token: token };
+
+  let { data, error } = await onlineClient().rpc("create_game",
+    ONLINE_V2 === false ? basis
+      : { ...basis, p_steals: Boolean(opties.steals), p_open: Boolean(opties.open) });
+
+  if (isMissingFunction(error)) {
+    // Oud schema: opnieuw zonder de nieuwe velden.
+    ONLINE_V2 = false;
+    ({ data, error } = await onlineClient().rpc("create_game", basis));
+  } else if (!error && ONLINE_V2 === null) {
+    ONLINE_V2 = true;
+  }
   if (error) throw new Error(error.message);
 
   rememberToken(code, token);
@@ -212,6 +240,7 @@ async function onlineOfferRematch(newCode) {
   const { error } = await onlineClient().rpc("offer_rematch", {
     p_code: ONLINE.code, p_token: ONLINE.token, p_new_code: newCode,
   });
+  if (isMissingFunction(error)) { ONLINE_V2 = false; throw new Error(V2_NODIG); }
   if (error) throw new Error(error.message);
 }
 
@@ -226,6 +255,7 @@ async function onlineFindOpen() {
   const { data, error } = await onlineClient().rpc("find_open_game", {
     p_token: token,
   });
+  if (isMissingFunction(error)) { ONLINE_V2 = false; throw new Error(V2_NODIG); }
   if (error) throw new Error(error.message);
   if (!data) return null;
 
