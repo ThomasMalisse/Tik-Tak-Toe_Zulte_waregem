@@ -74,8 +74,11 @@ function cleanPlayer(raw) {
   const intl = Array.isArray(raw.intl)
     ? raw.intl.map(cleanText).filter(Boolean).slice(0, 5)
     : [];
+  const coaches = Array.isArray(raw.coaches)
+    ? raw.coaches.map(cleanText).filter(Boolean).slice(0, 20)
+    : [];
   return { name, pos: raw.pos, nat, from: cleanYear(raw.from), to: cleanYear(raw.to),
-           clubs, intl };
+           clubs, intl, coaches };
 }
 
 function cleanClubs(raw) {

@@ -2,8 +2,8 @@
 
 Boter-kaas-en-eieren (tic-tac-toe) met een twist: elk vakje win je door een
 speler te noemen die **ooit voor SV Zulte Waregem** speelde én aan het rij- en
-kolomcriterium voldoet (positie, nationaliteit, een andere club of het
-decennium waarin hij er speelde).
+kolomcriterium voldoet: positie, nationaliteit, een andere club, een interland,
+of **de trainer onder wie hij speelde**.
 
 ## Zo speel je
 
@@ -13,10 +13,16 @@ Op het overzicht kies je uit vier dingen:
 |---|---|
 | **Ploegen België** | Kies een club. Je krijgt een code om iemand uit te nodigen. |
 | **Heel België** | Willekeurige clash tussen twee clubs, ook met code. |
+| **Puzzel van vandaag** | Elke dag hetzelfde raster voor iedereen, met deelbare score. |
 | **Tegen de bot** | Alleen spelen tegen de computer. |
 
-Onder die drie staat **Meedoen met code**: kreeg je een code of een link van
-iemand, dan vul je hem daar in. Via een link gebeurt dat vanzelf.
+Onder die kaarten staat **Meedoen met code**: kreeg je een code of een link van
+iemand, dan vul je hem daar in. Via een link gebeurt dat vanzelf. Daaronder kan
+je ook tegen een **willekeurige tegenstander** spelen — vindt hij niemand die
+wacht, dan zet hij zelf een potje open.
+
+Na een online potje verschijnt **Opnieuw?**; de ander krijgt dan "Meedoen aan de
+rematch" te zien.
 
 ### Met z'n tweeën (online)
 
@@ -37,6 +43,30 @@ staat je 3-2 er weer. `Reset` wist hem.
 In **Heel België** trekt elk nieuw potje twee andere ploegen tegenover elkaar —
 nooit twee keer na elkaar dezelfde clash. De stand loopt daar dan wel door over
 alle affiches heen; per toevallig duo bijhouden zou telkens op 0-0 springen.
+
+### Puzzel van vandaag
+
+Eén raster per dag, voor iedereen hetzelfde. De datum is de zaadwaarde voor
+zowel de club als het raster (`withSeed()` in `game.js`), dus dat werkt zonder
+dat er iets over het netwerk hoeft — twee mensen op dezelfde dag krijgen exact
+hetzelfde bord. Achteraf deel je je resultaat als blokjespatroon, zonder namen
+te verklappen:
+
+```
+Boter Kaas & Eieren — 21/08
+Cercle Brugge · 5/9
+
+🟩🟩🟩
+🟩🟩⬜
+⬜⬜⬜
+```
+
+### Stelen
+
+Start je een online potje met stelen aan, dan heeft elke speler **drie steals**:
+je neemt een vakje van je tegenstander over door er een *andere* speler op te
+noemen. Steelbare vakjes krijgen een stippellijn. De database bewaakt de regels —
+je kan niet van jezelf stelen, niet zonder steals, en niet met dezelfde naam.
 
 ### Tegen de bot
 
@@ -150,6 +180,25 @@ onspeelbaar doordat de enige juiste naam al elders gebruikt is.
 Omdat er honderden "Ook bij …"-clubs zijn maar maar vier posities, geldt er een
 quotum per soort criterium (`KIND_QUOTA` in `game.js`). Zonder dat quotum bestond
 zowat elk raster uit clubcriteria.
+
+### Criteria
+
+| Soort | Voorbeeld | Bron |
+|---|---|---|
+| positie | Doelman, Aanvaller | Wikidata + Wikipedia-infobox |
+| nationaliteit | België, Senegal | Wikidata |
+| andere club | Ook bij KAA Gent | Wikidata |
+| interland | Rode Duivel, Interland voor Nigeria | Wikidata (A-ploegen) |
+| **trainer** | Speelde onder Francky Dury | Wikidata (P286 met data) |
+
+De **decennia** ("Jaren 2010") staan uit: hun quotum is 0. Ze zijn vervangen door
+de trainer, want dat zegt meer. Wil je ze terug, zet dan `era` in `KIND_QUOTA` op
+bijvoorbeeld 3 — de categorieën worden nog steeds opgebouwd.
+
+Een speler hoort bij een trainer als zijn periode bij de club overlapt met diens
+ambtstermijn. Dat rekent op jaartal, niet op dag: wie in januari vertrok en een
+trainer die in december begon tellen als overlap in datzelfde jaar. Wikidata
+heeft geen dagdata per speler, dus exacter kan niet — voor een quiz volstaat het.
 
 ### Database: gegenereerd uit Wikidata
 

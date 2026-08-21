@@ -66,6 +66,20 @@ function buildCategories(players) {
     });
   });
 
+  /*
+   * Trainer-criteria. Veel sprekender dan een decennium: "Speelde onder Francky
+   * Dury" roept meteen een periode op, met een gezicht erbij.
+   */
+  const trainers = [...new Set(players.flatMap((p) => p.coaches || []))];
+  trainers.forEach((naam) => {
+    cats.push({
+      id: "coach:" + naam,
+      label: "Speelde onder " + naam,
+      kind: "coach",
+      test: (p) => (p.coaches || []).includes(naam),
+    });
+  });
+
   // Tijdvak-criteria ("speelde er in de jaren ...") — dit maakt het verschil
   // tussen de oude garde en de huidige kern.
   DECADES.forEach((decade) => {

@@ -90,6 +90,17 @@ POSITION_MAP = {
 NAT_FIXES = {
     "Democratische Republiek Congo": "DR Congo",
     "Congo-Kinshasa": "DR Congo",
+    # Wikidata gebruikt vaak de staatkundige naam; op een speelbord wil je de
+    # naam die mensen ook echt zeggen.
+    "Koninkrijk der Nederlanden": "Nederland",
+    "Koninkrijk Denemarken": "Denemarken",
+    "Verenigd Koninkrijk": "Groot-Brittannië",
+    "Volksrepubliek China": "China",
+    "Staat Palestina": "Palestina",
+    "Federale Republiek Joegoslavië": "Joegoslavië",
+    "Socialistische Federale Republiek Joegoslavië": "Joegoslavië",
+    "Gemenebest van Onafhankelijke Staten": "Rusland",
+    "Keizerrijk Rusland": "Rusland",
     "Centraal-Afrikaanse Republiek": "Centraal-Afrikaanse Rep.",
     "Verenigde Staten van Amerika": "Verenigde Staten",
     "Ivoorkust": "Ivoorkust",
@@ -527,6 +538,64 @@ def fetch_national(club_qid, qids):
     return result
 
 
+# ---------------------------------------------------------------------------
+#  Trainers: onder wie heeft hij gespeeld?
+#
+#  "Speelde onder Francky Dury" is een pak sprekender dan "Jaren 2010". Wikidata
+#  houdt per club bij wie er trainer was, mét begin- en einddatum (P286 met de
+#  kwalificaties P580/P582). Een speler hoort bij een trainer als zijn periode
+#  bij de club overlapt met diens ambtstermijn.
+#
+#  Let op: we rekenen op jaartal, niet op dag. Een speler die in januari vertrok
+#  en een trainer die in december begon tellen dus als overlap in datzelfde jaar.
+#  Voor een quiz is dat ruim genoeg; exact zou dagdata per speler vragen, en die
+#  heeft Wikidata niet.
+# ---------------------------------------------------------------------------
+
+COACH_QUERY = """
+SELECT ?coachLabel ?start ?end WHERE {
+  wd:%s p:P286 ?st .
+  ?st ps:P286 ?coach .
+  OPTIONAL { ?st pq:P580 ?start. }
+  OPTIONAL { ?st pq:P582 ?end. }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "nl,en". }
+}
+"""
+
+
+def fetch_coaches(club_qid):
+    """[(naam, vanjaar, totjaar-of-None)] voor deze club."""
+    cached = CACHE / f"{club_qid}-coach-v{CACHE_VERSION}.json"
+    if cached.exists():
+        return json.loads(cached.read_text(encoding="utf-8"))
+
+    spells = []
+    for row in sparql(COACH_QUERY % club_qid):
+        naam = val(row, "coachLabel")
+        van = year(val(row, "start"))
+        tot = year(val(row, "end"))
+        if not naam or re.fullmatch(r"Q\d+", naam) or van is None:
+            continue          # zonder begindatum valt er niets te matchen
+        spells.append([naam, van, tot])
+    cached.write_text(json.dumps(spells, ensure_ascii=False), encoding="utf-8")
+    return spells
+
+
+def coaches_for(player, spells):
+    """Onder welke trainers speelde deze speler?"""
+    van, tot = player["from"], player["to"]
+    if van is None and tot is None:
+        return []                       # zonder jaartallen valt er niets te zeggen
+    p_van = van if van is not None else tot
+    p_tot = tot if tot is not None else 2100
+    namen = []
+    for naam, c_van, c_tot in spells:
+        c_eind = c_tot if c_tot is not None else 2100
+        if p_van <= c_eind and p_tot >= c_van and naam not in namen:
+            namen.append(naam)
+    return sorted(namen)
+
+
 def fetch_club(qid):
     """Geeft {qid: speler-dict} voor een club, met cache op schijf.
 
@@ -647,6 +716,7 @@ def apply_overrides(rosters, ov):
                 "from": entry.get("from"), "to": entry.get("to"),
                 "clubs": list(entry.get("clubs") or []),
                 "intl": list(entry.get("intl") or []),
+                "coaches": list(entry.get("coaches") or []),
             })
             # Ook bij zijn andere clubs moet deze passage meetellen, anders
             # matcht "Ook bij <club>" hem daar niet.
@@ -774,7 +844,9 @@ def main():
         caps = fetch_national(qid, [p["id"] for p in roster
                                     if not p["id"].startswith("extra:")])
         for p in roster:
-            p["intl"] = caps.get(p["id"], [])
+            # Dezelfde naamcorrecties als bij nationaliteit, anders staat er
+            # "Interland voor Congo-Kinshasa" naast een speler uit "DR Congo".
+            p["intl"] = sorted({NAT_FIXES.get(c, c) for c in caps.get(p["id"], [])})
 
         # Derde bron: de Wikipedia-infobox. Die geeft de jaartallen die in
         # Wikidata ontbreken, en een specifiekere positie dan P413.
@@ -793,6 +865,12 @@ def main():
                 if p["from"] is None and p["to"] is None:
                     gained_years += 1
                 p["from"], p["to"] = box["from"], box["to"]
+
+        # Trainers pas nu: de infobox heeft de jaartallen net aangevuld, en
+        # zonder jaartallen valt er geen trainer aan te koppelen.
+        spells = fetch_coaches(qid)
+        for p in roster:
+            p["coaches"] = coaches_for(p, spells)
 
         roster.sort(key=lambda r: r["name"])
         rosters[club_id] = roster
@@ -835,7 +913,7 @@ def write_data(rosters):
     trimmed = {}
     for cid, name, _qid, _colors, _cat in CLUBS:
         roster = [{k: p.get(k) for k in
-                   ("name", "pos", "nat", "from", "to", "clubs", "intl")}
+                   ("name", "pos", "nat", "from", "to", "clubs", "intl", "coaches")}
                   for p in rosters.get(cid, [])]
         trimmed[cid] = roster
         path = DATA / f"{cid}.json"

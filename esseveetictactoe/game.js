@@ -157,7 +157,19 @@ function cellSolvable(rowCat, colCat, players, usedNames, min = 1) {
  * verdringen de "Ook bij ..."-criteria de rest: er zijn honderden clubs maar
  * maar vier posities.
  */
-const KIND_QUOTA = { pos: 4, era: 8, intl: 6, nat: 10, club: 16 };
+/*
+ * Hoeveel van de ruimste categorieën per soort meedoen als kandidaat.
+ *
+ * `era` (Jaren 1990, Jaren 2010, ...) staat op 0: die vakjes zijn vervangen
+ * door de trainer, want "Speelde onder Francky Dury" zegt een pak meer dan
+ * "Jaren 2010". De categorieën worden nog wél opgebouwd, dus wil je ze terug,
+ * dan volstaat hier een ander getal.
+ *
+ * Let op: 0 werkt alleen omdat de code hieronder `??` gebruikt en geen `||` —
+ * met `||` zou 0 als "niet ingevuld" gelezen worden en het standaardquotum
+ * krijgen, wat precies het omgekeerde effect had.
+ */
+const KIND_QUOTA = { pos: 4, era: 0, intl: 6, coach: 12, nat: 10, club: 16 };
 const GRID_ATTEMPTS = 400;
 const MIN_SOLUTIONS = 2;   // liefst geen vakje met maar één mogelijke naam
 
@@ -168,7 +180,8 @@ function gridCandidates(pool, players) {
   return Object.keys(byKind).flatMap((kind) =>
     byKind[kind]
       .sort((a, b) => size.get(b.id) - size.get(a.id))
-      .slice(0, KIND_QUOTA[kind] || 10)
+      // ?? en niet ||: een quotum van 0 betekent "helemaal niet", en 0 is falsy.
+      .slice(0, KIND_QUOTA[kind] ?? 10)
   );
 }
 
@@ -359,6 +372,7 @@ function dedupePlayers(players) {
     seen.to = maxYear(seen.to, p.to);
     seen.clubs = [...new Set([...seen.clubs, ...p.clubs])];
     seen.intl = [...new Set([...(seen.intl || []), ...(p.intl || [])])];
+    seen.coaches = [...new Set([...(seen.coaches || []), ...(p.coaches || [])])];
   }
   return [...byName.values()];
 }
@@ -629,7 +643,8 @@ function saveScore() {
 function renderSoloButton() {
   const solo = $("#toggle-solo");
   const level = $("#bot-level");
-  solo.style.display = state.online ? "none" : "";
+  // In de dagelijkse puzzel valt er niets te wisselen: die is per definitie solo.
+  solo.style.display = state.online || state.daily ? "none" : "";
   solo.textContent = state.solo ? "Tegen de bot" : "Solo";
   level.style.display = state.bot && !state.solo ? "" : "none";
   level.textContent = "Bot: " + BOT_LEVELS[state.botLevel].label;

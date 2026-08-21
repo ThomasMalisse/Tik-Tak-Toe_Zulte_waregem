@@ -55,7 +55,9 @@ function makeCtx() {
   vm.runInContext(`globalThis.api = { state, startGame, newGame, openGuess,
     submitGuess, allowedForCell, filledCells, dedupePlayers, withOwnClub,
     suggestPlayers, eligibleCategories, generateGrid, loadClubs, loadRosters,
-    rosterFor, clubById, loadBest, gameStuck, nextGame, saveScore, botMove, botPickCell, BOT_LEVELS }`, ctx);
+    rosterFor, clubById, loadBest, gameStuck, nextGame, saveScore, botMove,
+    botPickCell, BOT_LEVELS, playersForCategory, todayKey, withSeed, dailyShareText,
+    getClubs: () => CLUBS, shuffleForTest: shuffle }`, ctx);
   return ctx;
 }
 
@@ -149,6 +151,69 @@ async function playGame(ctx, { solo, mode, clubIds, wrongEvery }) {
   await cctx.api.nextGame();
   check("vaste club blijft dezelfde ploeg", cctx.api.state.clubIds.join() === "stvv",
         cctx.api.state.clubIds.join());
+
+  console.log("\n--- interland-criterium ---");
+  const ictx = makeCtx();
+  await ictx.api.loadClubs();
+  await ictx.api.loadRosters(["zulte-waregem"]);
+  const iPool = ictx.api.rosterFor("zulte-waregem");
+  const iCats = ictx.api.eligibleCategories(iPool, 3);
+  const duivel = iCats.find((c) => c.id === "intl:België");
+  check("criterium 'Rode Duivel' bestaat", Boolean(duivel),
+        duivel ? duivel.label + ", " + ictx.api.playersForCategory(duivel, iPool).length + " spelers" : "niet gevonden");
+  const anders = iCats.filter((c) => c.kind === "intl" && c.id !== "intl:België");
+  check("ook andere landen als criterium", anders.length > 0,
+        anders.slice(0, 4).map((c) => c.label).join(", "));
+
+  // Komt het ook echt op een bord terecht?
+  let gezien = 0;
+  for (let i = 0; i < 60; i++) {
+    const g = ictx.api.generateGrid(iPool);
+    if (g && [...g.rows, ...g.cols].some((c) => c.kind === "intl")) gezien++;
+  }
+  check("interlandcriterium komt op het bord", gezien > 10,
+        gezien + " van 60 rasters");
+
+  console.log("\n--- trainer-criterium ---");
+  const tCats = ictx.api.eligibleCategories(iPool, 3).filter((c) => c.kind === "coach");
+  check("trainers als criterium", tCats.length > 0,
+        tCats.map((c) => c.label.replace("Speelde onder ", "") +
+                 " (" + ictx.api.playersForCategory(c, iPool).length + ")").join(", "));
+
+  // Verschijnen ze ook echt, en verdringen ze de decennia?
+  let metCoach = 0, metEra = 0;
+  for (let i = 0; i < 100; i++) {
+    const g = ictx.api.generateGrid(iPool);
+    if (!g) continue;
+    const soorten = [...g.rows, ...g.cols].map((c) => c.kind);
+    if (soorten.includes("coach")) metCoach++;
+    if (soorten.includes("era")) metEra++;
+  }
+  console.log(`       van 100 rasters: ${metCoach} met een trainer, ${metEra} met een decennium`);
+  check("trainer komt vaker dan een decennium", metCoach > metEra,
+        metCoach + " tegen " + metEra);
+
+  console.log("\n--- puzzel van vandaag ---");
+  // De hele belofte: dezelfde dag = hetzelfde raster, voor iedereen. We doen
+  // alsof twee verschillende bezoekers hem openen (twee losse contexten).
+  const dagKey = ictx.api.todayKey();
+  const dagA = makeCtx(), dagB = makeCtx();
+  await dagA.api.loadClubs();
+  await dagB.api.loadClubs();
+  const club1 = dagA.api.withSeed(dagKey, () => dagA.api.shuffleForTest(dagA.api.getClubs().map((c) => c.id))[0]);
+  const club2 = dagB.api.withSeed(dagKey, () => dagB.api.shuffleForTest(dagB.api.getClubs().map((c) => c.id))[0]);
+  check("zelfde club voor iedereen", Boolean(club1) && club1 === club2, club1);
+
+  await dagA.api.loadRosters([club1]); await dagB.api.loadRosters([club2]);
+  const g1 = dagA.api.withSeed(dagKey, () => dagA.api.generateGrid(dagA.api.rosterFor(club1)));
+  const g2 = dagB.api.withSeed(dagKey, () => dagB.api.generateGrid(dagB.api.rosterFor(club2)));
+  const sleutel = (g) => g ? [...g.rows, ...g.cols].map((c) => c.id).join("|") : "geen";
+  check("zelfde raster voor iedereen", sleutel(g1) === sleutel(g2) && g1,
+        sleutel(g1).slice(0, 70) + "…");
+
+  // En morgen moet het een ánder raster zijn.
+  const g3 = dagA.api.withSeed(dagKey + 1, () => dagA.api.generateGrid(dagA.api.rosterFor(club1)));
+  check("morgen een ander raster", sleutel(g3) !== sleutel(g1));
 
   console.log("\n--- de bot ---");
   const botCtx = makeCtx();
