@@ -39,7 +39,7 @@ function makeCtx() {
   vm.runInContext(`globalThis.api = { state, startGame, newGame, openGuess,
     submitGuess, allowedForCell, filledCells, dedupePlayers, withOwnClub,
     suggestPlayers, eligibleCategories, generateGrid, loadClubs, loadRosters,
-    rosterFor, clubById, loadBest, gameStuck }`, ctx);
+    rosterFor, clubById, loadBest, gameStuck, nextGame, saveScore }`, ctx);
   return ctx;
 }
 
@@ -106,6 +106,33 @@ async function playGame(ctx, { solo, mode, clubIds, wrongEvery }) {
   const kums = pool.find((p) => p.name === "Sven Kums");
   check("Bossut voldoet aan 'Ook bij Zulte Waregem'", !!bossut && bossut.clubs.includes("Zulte Waregem"));
   check("Kums voldoet aan 'Ook bij Zulte Waregem'", !!kums && kums.clubs.includes("Zulte Waregem"));
+
+  console.log("\n--- Heel Belgie: nieuw potje = nieuwe affiche ---");
+  const bctx0 = makeCtx();
+  await bctx0.api.loadClubs();
+  await bctx0.api.startGame("belgium", ["zulte-waregem", "anderlecht"]);
+  bctx0.api.state.score.X = 3;
+  bctx0.api.saveScore();   // in het spel gebeurt dit als een potje eindigt
+  const eerste = bctx0.api.state.clubIds.slice().sort().join("+");
+  const paren = new Set([eerste]);
+  for (let i = 0; i < 4; i++) {
+    const vorige = bctx0.api.state.clubIds.slice().sort().join("+");
+    await bctx0.api.nextGame();
+    const nu = bctx0.api.state.clubIds.slice().sort().join("+");
+    check(`potje ${i + 2}: andere ploegen dan daarnet`, nu !== vorige, nu);
+    paren.add(nu);
+  }
+  check("stand loopt door over de affiches", bctx0.api.state.score.X === 3,
+        "X=" + bctx0.api.state.score.X);
+  check("meerdere verschillende affiches gezien", paren.size >= 3, paren.size + " unieke");
+
+  // Bij een vaste club moet "nieuw potje" juist dezelfde ploeg houden.
+  const cctx = makeCtx();
+  await cctx.api.loadClubs();
+  await cctx.api.startGame("club", ["stvv"]);
+  await cctx.api.nextGame();
+  check("vaste club blijft dezelfde ploeg", cctx.api.state.clubIds.join() === "stvv",
+        cctx.api.state.clubIds.join());
 
   console.log("\n--- bundel voor file:// ---");
   // Bij file:// blokkeert de browser fetch en laden we data/bundle.js in plaats

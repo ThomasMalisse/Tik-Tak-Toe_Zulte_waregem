@@ -24,7 +24,11 @@ met de knop `👤 Solo` op het spelscherm.
   gebruik — dan stopt het potje en wint wie de meeste vakjes heeft.
 
 De stand wordt per affiche bewaard: kom je later terug bij dezelfde club, dan
-staat je 3-2 er weer. `♻️ Reset` wist hem.
+staat je 3-2 er weer. `Reset` wist hem.
+
+In **Heel België** trekt elk nieuw potje twee andere ploegen tegenover elkaar —
+nooit twee keer na elkaar dezelfde clash. De stand loopt daar dan wel door over
+alle affiches heen; per toevallig duo bijhouden zou telkens op 0-0 springen.
 
 ### Solo
 

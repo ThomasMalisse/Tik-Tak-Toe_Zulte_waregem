@@ -247,8 +247,8 @@ async function startGame(mode, clubIds) {
     ? rosterFor(clubIds[0])
     : dedupePlayers(clubIds.flatMap(withOwnClub));
 
-  state.score = loadScore(clubIds);
-  state.best = loadBest(clubIds);
+  state.score = loadScore(mode, clubIds);
+  state.best = loadBest(mode, clubIds);
 
   renderSoloButton();
   newGame();
@@ -333,6 +333,23 @@ function newGame() {
   render();
 }
 
+/*
+ * "Nieuw potje". Bij een vaste club is dat een nieuw raster; bij "Heel België"
+ * horen er ook twee andere ploegen tegenover elkaar te staan, anders speel je
+ * de hele avond dezelfde clash.
+ */
+function nextGame() {
+  if (state.mode !== "belgium") return newGame();
+
+  const current = state.clubIds.slice().sort().join("+");
+  let pair;
+  do {
+    const ids = shuffle(CLUBS.map((c) => c.id));
+    pair = [ids[0], ids[1]];
+  } while (pair.slice().sort().join("+") === current);
+  return startGame("belgium", pair);
+}
+
 function resetScore() {
   state.score = { X: 0, O: 0, draw: 0 };
   state.best = 0;
@@ -349,31 +366,42 @@ function resetScore() {
  * localStorage kan gooien (privemodus, geblokkeerde site-data) — dan speelt het
  * spel gewoon door zonder te bewaren.
  */
-function scoreKey(clubIds) {
-  return "bke-score:" + clubIds.slice().sort().join("+");
+/*
+ * "Heel België" trekt elk potje een nieuwe affiche, dus daar heeft een stand
+ * per clubduo geen zin — die zou telkens op 0-0 springen. Daar loopt één stand
+ * door over alle clashes heen; bij een vaste club blijft het per ploeg.
+ */
+function storageKey(prefix, mode, clubIds) {
+  return mode === "belgium"
+    ? prefix + ":belgium"
+    : prefix + ":" + clubIds.slice().sort().join("+");
 }
 
-function bestKey(clubIds) {
-  return "bke-best:" + clubIds.slice().sort().join("+");
+function scoreKey(mode, clubIds) {
+  return storageKey("bke-score", mode, clubIds);
 }
 
-function loadBest(clubIds) {
+function bestKey(mode, clubIds) {
+  return storageKey("bke-best", mode, clubIds);
+}
+
+function loadBest(mode, clubIds) {
   try {
-    const n = Number(localStorage.getItem(bestKey(clubIds)));
+    const n = Number(localStorage.getItem(bestKey(mode, clubIds)));
     return Number.isFinite(n) ? n : 0;
   } catch (e) { return 0; }
 }
 
 function saveBest() {
   try {
-    localStorage.setItem(bestKey(state.clubIds), String(state.best));
+    localStorage.setItem(bestKey(state.mode, state.clubIds), String(state.best));
   } catch (e) { /* niets te doen */ }
 }
 
-function loadScore(clubIds) {
+function loadScore(mode, clubIds) {
   const blank = { X: 0, O: 0, draw: 0 };
   try {
-    const saved = JSON.parse(localStorage.getItem(scoreKey(clubIds)) || "null");
+    const saved = JSON.parse(localStorage.getItem(scoreKey(mode, clubIds)) || "null");
     if (!saved) return blank;
     ["X", "O", "draw"].forEach((k) => {
       if (Number.isFinite(saved[k])) blank[k] = saved[k];
@@ -384,7 +412,7 @@ function loadScore(clubIds) {
 
 function saveScore() {
   try {
-    localStorage.setItem(scoreKey(state.clubIds), JSON.stringify(state.score));
+    localStorage.setItem(scoreKey(state.mode, state.clubIds), JSON.stringify(state.score));
   } catch (e) { /* niets te doen */ }
 }
 
@@ -845,7 +873,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Spelscherm
   state.solo = loadSolo();
-  $("#new-game").addEventListener("click", newGame);
+  $("#new-game").addEventListener("click", nextGame);
   $("#toggle-solo").addEventListener("click", () => {
     state.solo = !state.solo;
     saveSolo();
