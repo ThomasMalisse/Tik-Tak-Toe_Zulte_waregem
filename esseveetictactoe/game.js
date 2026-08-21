@@ -224,6 +224,13 @@ const state = {
   stuck: false,    // geeindigd omdat geen enkel open vakje nog oplosbaar was
   playable: true,  // false als er geen oplosbaar raster gemaakt kon worden
   score: { X: 0, O: 0, draw: 0 },
+  blitz: false,      // tegen de klok, onbeperkt gokken, rasters blijven komen
+  blitzLeft: 0,      // seconden
+  blitzScore: 0,     // vakjes over alle rasters heen
+  blitzTimer: null,
+  reverse: false,    // omgekeerd: wij noemen de speler, jij kiest het vakje
+  reversePlayer: null,
+  reverseLives: 0,
   daily: null,       // datumsleutel als dit de puzzel van vandaag is
   bot: false,        // spelen tegen de computer
   botLevel: BOT_DEFAULT,
@@ -548,6 +555,12 @@ function newGame() {
  */
 function nextGame() {
   if (state.online) return;      // online speel je het potje uit
+  if (state.reverse) {
+    state.reverseLives = REVERSE_LIVES;
+    newGame();
+    volgendeReversePlayer();
+    return;
+  }
   if (state.mode !== "belgium") return newGame();
 
   const current = state.clubIds.slice().sort().join("+");
@@ -644,12 +657,14 @@ function renderSoloButton() {
   const solo = $("#toggle-solo");
   const level = $("#bot-level");
   // In de dagelijkse puzzel valt er niets te wisselen: die is per definitie solo.
-  solo.style.display = state.online || state.daily ? "none" : "";
+  const kaal = state.online || state.daily || state.blitz || state.reverse;
+  solo.style.display = kaal ? "none" : "";
   solo.textContent = state.solo ? "Tegen de bot" : "Solo";
   level.style.display = state.bot && !state.solo ? "" : "none";
   level.textContent = "Bot: " + BOT_LEVELS[state.botLevel].label;
-  $("#new-game").style.display = state.online || state.daily ? "none" : "";
-  $("#reset-score").style.display = state.online || state.daily ? "none" : "";
+  // "Nieuw potje" heeft in blitz geen zin (de klok loopt) maar wel in omgekeerd.
+  $("#new-game").style.display = state.online || state.daily || state.blitz ? "none" : "";
+  $("#reset-score").style.display = kaal ? "none" : "";
   // Delen kan pas als de puzzel van vandaag af is.
   $("#share-daily").style.display = state.daily && state.finished ? "" : "none";
   // Opnieuw spelen kan alleen online, en pas als het potje uit is.
@@ -685,6 +700,20 @@ function renderScoreboard() {
     replaceChildren(board,
       scoreBox("score-x", "Vakjes", filledCells() + "/9"),
       scoreBox("score-draw", "Pogingen", state.guessesLeft),
+      scoreBox("score-o", "Record", state.best));
+    return;
+  }
+  if (state.blitz) {
+    replaceChildren(board,
+      scoreBox("score-x", "Vakjes", state.blitzScore),
+      scoreBox("score-draw", "Tijd", state.blitzLeft + "s"),
+      scoreBox("score-o", "Record", state.best));
+    return;
+  }
+  if (state.reverse) {
+    replaceChildren(board,
+      scoreBox("score-x", "Vakjes", filledCells() + "/9"),
+      scoreBox("score-draw", "Levens", Math.max(0, state.reverseLives)),
       scoreBox("score-o", "Record", state.best));
     return;
   }
@@ -770,7 +799,10 @@ function render() {
 
   boardEl.addEventListener("click", (e) => {
     const btn = e.target.closest(".cell");
-    if (btn && !btn.disabled) openGuess(Number(btn.dataset.idx));
+    if (!btn || btn.disabled) return;
+    const idx = Number(btn.dataset.idx);
+    if (state.reverse) reverseKlik(idx);
+    else openGuess(idx);
   });
 
   // Beurt / status
@@ -792,6 +824,23 @@ function render() {
       ? el("span", "badge draw", "Gelijkspel!" + stuck)
       : el("span", "badge win-" + mark(state.winner),
            `Speler ${state.winner} wint!${stuck}`));
+  } else if (state.blitz) {
+    replaceChildren(turnEl, state.finished
+      ? el("span", "badge win-x", `Tijd om! ${state.blitzScore} vakjes`)
+      : el("span", "badge turn-x", `${state.blitzLeft} seconden`));
+  } else if (state.reverse) {
+    if (state.finished) {
+      replaceChildren(turnEl, el("span", "badge draw",
+        state.reverseLives <= 0 ? `Af! ${filledCells()} vakjes`
+                                : `Uitgespeeld — ${filledCells()} vakjes`));
+    } else if (state.reversePlayer) {
+      const p = state.reversePlayer;
+      replaceChildren(turnEl,
+        document.createTextNode("Waar hoort "),
+        el("span", "badge turn-x", p.name),
+        document.createTextNode(` thuis? (${POSITION_LABELS[p.pos]} · ${p.nat}) `),
+        el("span", "lives", "♥".repeat(Math.max(0, state.reverseLives))));
+    }
   } else if (state.bot) {
     replaceChildren(turnEl, state.botThinking
       ? el("span", "badge turn-o", "De bot denkt na…")
@@ -977,10 +1026,16 @@ function submitGuess() {
     state.usedNames.add(match.name);
     fb.textContent = `✔ Juist! ${match.name} telt.`;
     fb.className = "feedback good";
+    if (state.blitz) state.blitzScore++;
     setTimeout(() => {
       closeGuess();
+      if (state.blitz && filledCells() === 9) {
+        // Vol bord in blitz: meteen een nieuw raster, de klok loopt door.
+        newGame();
+        return;
+      }
       finishTurn();
-    }, 650);
+    }, state.blitz ? 250 : 650);
   } else {
     fb.textContent = `✖ ${match.name} voldoet niet aan dit vakje. ` +
       (state.solo ? "Poging kwijt." : "Beurt gaat over.");
@@ -1018,6 +1073,8 @@ function leader() {
 
 // Na een beurt: winnaar checken en van speler wisselen.
 function finishTurn() {
+  // Blitz: geen beurten, alleen de klok. Je blijft gewoon aan zet.
+  if (state.blitz) { render(); return; }
   if (state.solo) return finishSoloTurn();
 
   const res = checkWinner();
@@ -1142,6 +1199,163 @@ function renderGameKits(clubIds) {
   const box = clear($("#game-kits"));
   clubIds.map((id) => clubById(id)).filter(Boolean)
     .forEach((club) => box.appendChild(clubKit(club, 56)));
+}
+
+/* ---------- Blitz ---------- */
+
+const BLITZ_SECONDS = 90;
+
+/*
+ * Zoveel mogelijk vakjes in anderhalve minuut. Fout gokken kost geen beurt,
+ * alleen tijd — daardoor speel je snel en op gevoel in plaats van voorzichtig.
+ * Is een raster vol, dan komt er meteen een nieuw; de score loopt door.
+ */
+async function startBlitzGame(clubIds) {
+  stopBlitz();
+  state.blitz = true;
+  state.reverse = false;
+  state.daily = null;
+  state.bot = false;
+  state.online = false;
+  state.solo = false;
+  state.seat = "X";
+  state.mode = "blitz";
+  state.clubIds = clubIds;
+  state.blitzScore = 0;
+  state.blitzLeft = BLITZ_SECONDS;
+
+  const info = headerInfoFor(clubIds.length === 1 ? "club" : "belgium", clubIds);
+  applyTheme(info.colors);
+  $("#game-eyebrow").textContent = "Blitz · 90 seconden";
+  $("#game-title").textContent = info.title;
+  renderGameKits(clubIds);
+  showScreen("game");
+
+  if (!(await laadPool(clubIds))) return;
+  state.best = loadBest("blitz", clubIds);
+  renderSoloButton();
+  newGame();
+  startBlitzKlok();
+}
+
+function startBlitzKlok() {
+  stopBlitz();
+  state.blitzTimer = setInterval(() => {
+    state.blitzLeft--;
+    if (state.blitzLeft <= 0) {
+      state.blitzLeft = 0;
+      stopBlitz();
+      state.finished = true;
+      if (state.blitzScore > state.best) { state.best = state.blitzScore; saveBest(); }
+      render();
+      return;
+    }
+    // Zowel het scorebord als de balk erboven; die laatste werd anders alleen
+    // door render() bijgewerkt en bleef dus op het startgetal staan.
+    renderScoreboard();
+    replaceChildren($("#turn"), el("span", "badge turn-x", `${state.blitzLeft} seconden`));
+  }, 1000);
+}
+
+function stopBlitz() {
+  if (state.blitzTimer) { clearInterval(state.blitzTimer); state.blitzTimer = null; }
+}
+
+/* ---------- Omgekeerd ---------- */
+
+const REVERSE_LIVES = 3;
+
+/*
+ * Omgekeerd spel: wij tonen een speler, jij zegt waar hij hoort. Dat vraagt
+ * andere kennis dan zelf een naam bedenken — je moet de speler kénnen in plaats
+ * van hem te kunnen oproepen.
+ */
+async function startReverseGame(clubIds) {
+  stopBlitz();
+  state.reverse = true;
+  state.blitz = false;
+  state.daily = null;
+  state.bot = false;
+  state.online = false;
+  state.solo = false;
+  state.seat = "X";
+  state.mode = "reverse";
+  state.clubIds = clubIds;
+  state.reverseLives = REVERSE_LIVES;
+
+  const info = headerInfoFor(clubIds.length === 1 ? "club" : "belgium", clubIds);
+  applyTheme(info.colors);
+  $("#game-eyebrow").textContent = "Omgekeerd";
+  $("#game-title").textContent = info.title;
+  renderGameKits(clubIds);
+  showScreen("game");
+
+  if (!(await laadPool(clubIds))) return;
+  state.best = loadBest("reverse", clubIds);
+  renderSoloButton();
+  newGame();
+  volgendeReversePlayer();
+}
+
+/*
+ * Kies een speler die nog minstens één leeg vakje kan invullen. Kan niemand
+ * nog iets, dan is het potje uit.
+ */
+function volgendeReversePlayer() {
+  const vrij = state.board.map((c, i) => (c ? null : i)).filter((i) => i !== null);
+  const kandidaten = state.players.filter((p) =>
+    !state.usedNames.has(p.name) &&
+    vrij.some((i) => state.rows[Math.floor(i / 3)].test(p) && state.cols[i % 3].test(p)));
+
+  if (!kandidaten.length) {
+    state.finished = true;
+    state.reversePlayer = null;
+    const score = filledCells();
+    if (score > state.best) { state.best = score; saveBest(); }
+    render();
+    return;
+  }
+  state.reversePlayer = kandidaten[Math.floor(RNG() * kandidaten.length)];
+  render();
+}
+
+// Klik op een vakje in de omgekeerde modus.
+function reverseKlik(idx) {
+  const p = state.reversePlayer;
+  if (!p || state.board[idx] || state.finished) return;
+  const past = state.rows[Math.floor(idx / 3)].test(p) && state.cols[idx % 3].test(p);
+  if (past) {
+    state.board[idx] = { player: "X", name: p.name };
+    state.usedNames.add(p.name);
+    volgendeReversePlayer();
+  } else {
+    state.reverseLives--;
+    if (state.reverseLives <= 0) {
+      state.finished = true;
+      const score = filledCells();
+      if (score > state.best) { state.best = score; saveBest(); }
+    }
+    render();
+  }
+}
+
+/* ---------- Gedeeld: de spelerspool laden ---------- */
+
+async function laadPool(clubIds) {
+  const loading = el("div", "empty-state");
+  loading.appendChild(el("p", null, "Spelers laden…"));
+  replaceChildren($("#board-wrap"), loading);
+  try {
+    await loadRosters(clubIds);
+  } catch (err) {
+    showLoadError(err);
+    return false;
+  }
+  state.players = clubIds.length === 1
+    ? rosterFor(clubIds[0])
+    : dedupePlayers(clubIds.flatMap(withOwnClub));
+  state.score = { X: 0, O: 0, draw: 0 };
+  return true;
 }
 
 /* ---------- Dagelijkse puzzel ---------- */
@@ -1446,14 +1660,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.querySelectorAll(".mode-card").forEach((card) => {
     card.addEventListener("click", () => {
       const mode = card.dataset.mode;
-      if (mode === "club" || mode === "bot") {
+      if (["club", "bot", "blitz", "reverse"].includes(mode)) {
         // Beide beginnen met een clubkeuze; wat er daarna gebeurt hangt
         // hiervan af.
-        state.pendingMode = mode === "bot" ? "bot" : "online";
-        $("#clubs-title").textContent = mode === "bot"
-          ? "Tegen de bot" : "Kies een club";
-        $("#clubs-eyebrow").textContent = mode === "bot"
-          ? "Alleen spelen" : "Nodig iemand uit";
+        // Alle vier beginnen met een clubkeuze; pendingMode bepaalt wat er
+        // daarna gebeurt.
+        state.pendingMode = mode === "club" ? "online" : mode;
+        const titels = {
+          club: ["Nodig iemand uit", "Kies een club"],
+          bot: ["Alleen spelen", "Tegen de bot"],
+          blitz: ["90 seconden", "Blitz"],
+          reverse: ["Omgekeerd", "Kies een club"],
+        };
+        $("#clubs-eyebrow").textContent = titels[mode][0];
+        $("#clubs-title").textContent = titels[mode][1];
         showScreen("clubs");
       } else if (mode === "daily") {
         startDailyGame();
@@ -1469,8 +1689,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#club-grid").addEventListener("click", (e) => {
     const btn = e.target.closest(".club-card");
     if (!btn) return;
-    if (state.pendingMode === "bot") startBotGame([btn.dataset.club]);
-    else createOnlineGame([btn.dataset.club]);
+    const ids = [btn.dataset.club];
+    if (state.pendingMode === "bot") startBotGame(ids);
+    else if (state.pendingMode === "blitz") startBlitzGame(ids);
+    else if (state.pendingMode === "reverse") startReverseGame(ids);
+    else createOnlineGame(ids);
   });
   $("#back-to-overview").addEventListener("click", (e) => { e.preventDefault(); showScreen("overview"); });
   $("#back-to-overview-2").addEventListener("click", (e) => {
@@ -1551,7 +1774,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     newGame();
   });
   $("#reset-score").addEventListener("click", resetScore);
-  $("#switch-team").addEventListener("click", () => showScreen("overview"));
+  $("#switch-team").addEventListener("click", () => {
+    stopBlitz();
+    state.blitz = false;
+    state.reverse = false;
+    showScreen("overview");
+  });
 
   $("#guess-submit").addEventListener("click", submitGuess);
   $("#guess-hint").addEventListener("click", showHint);

@@ -14,6 +14,8 @@ Op het overzicht kies je uit vier dingen:
 | **Ploegen België** | Kies een club. Je krijgt een code om iemand uit te nodigen. |
 | **Heel België** | Willekeurige clash tussen twee clubs, ook met code. |
 | **Puzzel van vandaag** | Elke dag hetzelfde raster voor iedereen, met deelbare score. |
+| **Blitz** | 90 seconden, onbeperkt gokken, rasters blijven komen. |
+| **Omgekeerd** | Wij noemen een speler, jij klikt waar hij hoort. |
 | **Tegen de bot** | Alleen spelen tegen de computer. |
 
 Onder die kaarten staat **Meedoen met code**: kreeg je een code of een link van
@@ -67,6 +69,22 @@ Start je een online potje met stelen aan, dan heeft elke speler **drie steals**:
 je neemt een vakje van je tegenstander over door er een *andere* speler op te
 noemen. Steelbare vakjes krijgen een stippellijn. De database bewaakt de regels —
 je kan niet van jezelf stelen, niet zonder steals, en niet met dezelfde naam.
+
+### Blitz
+
+Negentig seconden, en fout gokken kost je **geen beurt** — alleen tijd. Daardoor
+speel je op gevoel in plaats van voorzichtig. Vul je het raster, dan komt er
+meteen een nieuw en loopt je score door. Je record blijft per club bewaard.
+
+### Omgekeerd
+
+Het spel draait om: wij tonen een speler met zijn positie en nationaliteit, jij
+klikt in welk vakje hij hoort. Dat vraagt andere kennis — je moet de speler
+*kennen* in plaats van hem zelf te kunnen bedenken. Drie levens; elke misklik
+kost er een.
+
+De voorgestelde speler past altijd in minstens één leeg vakje, anders zou de
+vraag onmogelijk zijn. Kan niemand nog iets, dan stopt het potje.
 
 ### Tegen de bot
 

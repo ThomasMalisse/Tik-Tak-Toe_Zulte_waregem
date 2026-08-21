@@ -155,6 +155,8 @@ body {
 .cell.stealable { border-style: dashed; border-color: var(--gc1); }
 .cell.stealable:hover { background: #fff6f6; }
 .share-note { color: var(--green-dark); font-weight: 700; font-size: 12px; }
+.lives { color: var(--gc1); letter-spacing: 2px; font-size: 15px; }
+#turn .badge { max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px) { .join-row { flex-direction: column; } }
 .mode-light { background: var(--card); box-shadow: 0 6px 18px rgba(28, 28, 26, 0.08); }
 .mode-dark { background: var(--card-dark); color: #fff; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3); }

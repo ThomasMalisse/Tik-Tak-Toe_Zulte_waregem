@@ -40,6 +40,9 @@ function makeCtx() {
     window: { scrollTo(){} },
     location: { protocol: "http:" },
     setTimeout: (fn) => fn(),
+    // De blitzklok moet in de test niet écht lopen; we sturen hem zelf aan.
+    setInterval: (fn, ms) => ({ fn, ms }),
+    clearInterval: () => {},
     localStorage: { getItem: (k) => (k in store ? store[k] : null),
                     setItem: (k, v) => { store[k] = String(v); } },
     // fetch leest gewoon van schijf
@@ -57,7 +60,8 @@ function makeCtx() {
     suggestPlayers, eligibleCategories, generateGrid, loadClubs, loadRosters,
     rosterFor, clubById, loadBest, gameStuck, nextGame, saveScore, botMove,
     botPickCell, BOT_LEVELS, playersForCategory, todayKey, withSeed, dailyShareText,
-    getClubs: () => CLUBS, shuffleForTest: shuffle }`, ctx);
+    getClubs: () => CLUBS, shuffleForTest: shuffle,
+    startReverseGame, reverseKlik, startBlitzGame, stopBlitz }`, ctx);
   return ctx;
 }
 
@@ -276,6 +280,61 @@ async function playGame(ctx, { solo, mode, clubIds, wrongEvery }) {
     if (z2 && !botPool.slice(0, 5).some((p) => p.name === z2.name)) ongeldig++;
   }
   check("bot noemt alleen geldige spelers", ongeldig === 0, ongeldig + " fout");
+
+  console.log("\n--- omgekeerd ---");
+  const rctx = makeCtx();
+  await rctx.api.loadClubs();
+  await rctx.api.startReverseGame(["zulte-waregem"]);
+  check("raster gemaakt", rctx.api.state.playable === true);
+  check("er staat een speler klaar", Boolean(rctx.api.state.reversePlayer),
+        rctx.api.state.reversePlayer && rctx.api.state.reversePlayer.name);
+
+  // Elke voorgestelde speler moet in minstens één leeg vakje passen — anders
+  // stel je een onmogelijke vraag.
+  let onmogelijk = 0, gespeeld = 0;
+  for (let beurt = 0; beurt < 30 && !rctx.api.state.finished; beurt++) {
+    const st = rctx.api.state;
+    const p = st.reversePlayer;
+    if (!p) break;
+    const past = [];
+    for (let i = 0; i < 9; i++) {
+      if (st.board[i]) continue;
+      if (st.rows[Math.floor(i / 3)].test(p) && st.cols[i % 3].test(p)) past.push(i);
+    }
+    if (!past.length) { onmogelijk++; break; }
+    rctx.api.reverseKlik(past[0]);      // juist antwoord
+    gespeeld++;
+  }
+  check("elke voorgestelde speler past ergens", onmogelijk === 0,
+        gespeeld + " beurten gespeeld");
+  check("bord raakt gevuld", rctx.api.filledCells() >= 5,
+        rctx.api.filledCells() + "/9");
+
+  // Fout klikken kost een leven.
+  const r2 = makeCtx();
+  await r2.api.loadClubs();
+  await r2.api.startReverseGame(["zulte-waregem"]);
+  const st2 = r2.api.state;
+  const fout = [0,1,2,3,4,5,6,7,8].find((i) => !st2.board[i] &&
+    !(st2.rows[Math.floor(i / 3)].test(st2.reversePlayer) &&
+      st2.cols[i % 3].test(st2.reversePlayer)));
+  if (fout !== undefined) {
+    const voor = st2.reverseLives;
+    r2.api.reverseKlik(fout);
+    check("fout klikken kost een leven", st2.reverseLives === voor - 1,
+          voor + " -> " + st2.reverseLives);
+  } else {
+    check("fout klikken kost een leven", true, "geen fout vakje beschikbaar");
+  }
+
+  console.log("\n--- blitz ---");
+  const bctx2 = makeCtx();
+  await bctx2.api.loadClubs();
+  await bctx2.api.startBlitzGame(["zulte-waregem"]);
+  check("blitz start met 90 seconden", bctx2.api.state.blitzLeft === 90);
+  check("blitz heeft een raster", bctx2.api.state.playable === true);
+  bctx2.api.stopBlitz();
+  check("klok is te stoppen", bctx2.api.state.blitzTimer === null);
 
   console.log("\n--- bundel voor file:// ---");
   // Bij file:// blokkeert de browser fetch en laden we data/bundle.js in plaats
