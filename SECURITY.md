@@ -5,20 +5,19 @@ wat er in dit project gebeurt, en **waar het staat**.
 
 ## Eerst: wat voor soort applicatie is dit?
 
-Belangrijk om te weten voor je verder leest:
+Het spel bestaat uit **twee delen**, en dat bepaalt welke punten van toepassing zijn:
 
-> Dit is een **volledig statische site**. Er is geen server, geen database, geen
-> login, geen formulier dat iets verstuurt, en geen enkele gebruiker die data
-> achterlaat die een andere gebruiker te zien krijgt.
+1. **Het spel zelf** — een volledig statische site. HTML, CSS, JS en JSON-bestanden,
+   verder gebeurt alles in de browser. Geen server, geen login.
+2. **Online samen spelen** — praat met een **Supabase-database** (Postgres).
+   Hier zijn SQL, RLS en toegangscontrole wél aan de orde.
 
-De browser haalt HTML, CSS, JavaScript en een paar JSON-bestanden op, en verder
-gebeurt alles lokaal in die browser. Vercel serveert die bestanden van zijn CDN.
+Voor deel 1 zijn een aantal punten uit de les niet van toepassing, en ze
+"toevoegen" zou decor zijn. Voor deel 2 zijn ze dat wél. Hieronder staat per
+punt eerlijk wat waar geldt.
 
-Dat heeft gevolgen voor de checklist. Een aantal punten uit de les gaat over een
-dynamische Node/Express-app met Supabase erachter, en die onderdelen *bestaan
-hier niet*. Ze "toevoegen" zou betekenen dat we een server, een database en een
-loginsysteem verzinnen die niets doen — dat is geen beveiliging maar decor.
-Hieronder staat per punt eerlijk of het van toepassing is.
+> Onderdeel 1 blijft de kern: ook zonder Supabase werkt het spel volledig.
+> Laat je `config.js` leeg, dan is enkel de knop "Samen online" uitgeschakeld.
 
 ---
 
@@ -32,11 +31,12 @@ Hieronder staat per punt eerlijk of het van toepassing is.
 | **Security headers / CSP** | **Ja** | [`vercel.json`](vercel.json) |
 | **localStorage** | **Ja** | [`game.js`](esseveetictactoe/game.js) — `cleanCount` |
 | **Geheimen / .env** | **Ja** (preventief) | geen sleutels in de repo |
-| SQL Injection | Nee — geen database, geen SQL | — |
-| CSRF | Nee — geen server, geen POST, geen sessie | — |
-| Supabase RLS | Nee — geen Supabase | — |
+| **SQL Injection** | **Ja** — sinds online spelen | [`supabase/schema.sql`](supabase/schema.sql) |
+| **Supabase RLS** | **Ja** — sinds online spelen | [`supabase/schema.sql`](supabase/schema.sql) |
+| **Toegangscontrole** | **Ja** — wie mag welke zet doen | `play_move()` |
+| CSRF | Nee — geen cookies, dus niets te vervalsen | zie uitleg |
 | Wachtwoorden / bcrypt | Nee — geen accounts | — |
-| Cookies / sessions | Nee — geen cookies, geen server-state | — |
+| Cookies / sessions | Nee — geen cookies, geen server-sessie | — |
 | DoS / rate limiting | Deels — buiten ons bereik | CDN van Vercel |
 | GDPR | Nee — geen persoonsgegevens van bezoekers | — |
 
@@ -203,31 +203,83 @@ bewaart.
 
 ---
 
+### 6. De database — RLS, SQL-injectie en toegangscontrole
+
+Alles hierover staat in [`supabase/schema.sql`](supabase/schema.sql).
+
+**Het uitgangspunt:** de browser krijgt de **anon-sleutel**, en die is publiek.
+Iedereen kan hem uit de broncode lezen — zo is hij bedoeld. De beveiliging mag
+dus niet afhangen van het geheimhouden van die sleutel. Ze komt van RLS:
+
+| Tabel | Lezen | Schrijven |
+|---|---|---|
+| `games` | iedereen (je hebt de code nodig om iets te vinden) | **niemand** |
+| `game_tokens` | **niemand** | **niemand** |
+
+`game_tokens` heeft RLS aan en **geen enkele policy**. Zonder policy weigert
+Postgres alles. Met de anon-sleutel is die tabel dus onzichtbaar, ook al ken je
+de tabelnaam.
+
+Waarom staan die tokens apart? Eerst had ik ze als kolom in `games`. Maar de
+leespolicy op die tabel geeft de **hele rij** terug — dus kon je tegenstander
+jouw token lezen en in jouw plaats spelen. Dat is precies het soort fout dat RLS
+hoort te voorkomen en die je makkelijk over het hoofd ziet. Ze staan nu in een
+aparte tabel die niemand mag lezen.
+
+**Schrijven kan alleen via vier functies:** `create_game`, `join_game`,
+`play_move` en `finish_game`. Die zijn `security definer` (ze draaien met de
+rechten van de eigenaar, dus ze mogen wél schrijven) met een vastgezet
+`search_path` (zodat niemand via een eigen schema kan omleiden welke tabel
+geraakt wordt).
+
+`play_move()` controleert, in deze volgorde:
+
+1. bestaat het potje, en loopt het nog?
+2. **wie ben jij** — bepaald door je token, niet door wat de browser beweert
+3. ben je wel aan zet?
+4. bestaat dat vakje, en is het nog leeg?
+5. is die speler niet al elders in het raster gebruikt?
+
+Pas dan wordt het bord aangepast en de beurt doorgegeven. De client kan dus
+liegen zoveel hij wil — hij krijgt een foutmelding terug.
+
+**SQL Injection.** Alle aanroepen gaan via `supabase.rpc(...)`, dat
+geparametriseerde queries gebruikt: de waarden gaan apart van de query naar de
+database en worden nooit als SQL uitgevoerd. Dat is exact het `sql\`...\``-
+mechanisme uit de les, en het equivalent van Prisma's aanpak. Nergens in dit
+project wordt een query samengeplakt uit tekst.
+
+Daarnaast controleert elke functie de vorm van wat binnenkomt: de code moet
+`^[A-Z0-9-]{4,16}$` zijn, het token 20-100 tekens, het raster exact 3 rijen en
+3 kolommen, de uitslag `X`, `O` of `draw`.
+
+**Wat de database níét controleert:** of het voetbalantwoord juist is. Dat zou
+betekenen dat de hele spelersdatabase in Postgres moet staan. De server bewaakt
+dus *wie* wat *wanneer* mag doen, niet of Sven Kums echt bij Zulte Waregem
+speelde. Voor een spelletje onder vrienden is dat de juiste afweging; wil je het
+waterdicht, dan moeten de rosters mee de database in.
+
+**Het token zelf** wordt gemaakt met `crypto.getRandomValues()`, niet met
+`Math.random()` — dat laatste is voorspelbaar en dus ongeschikt voor iets dat
+als bewijs dient.
+
+---
+
 ## Wat er níét gedaan is, en waarom niet
-
-### SQL Injection — niet van toepassing
-
-Er is geen database en geen SQL. De data zit in statische JSON-bestanden die wij
-zelf genereren.
-
-Het principe uit de les is wél toegepast waar het hier telt: input hoort nooit
-rechtstreeks in een opdracht geplakt te worden. Zie `dataUrl()` hierboven.
 
 ### CSRF — niet van toepassing
 
-CSRF betekent: een aanvaller laat jouw browser een **actie** uitvoeren op een
-server waar je ingelogd bent. Dat vraagt drie dingen die hier geen van alle
-bestaan: een server die acties uitvoert, een sessie of cookie die je herkent, en
-een actie die iets wijzigt.
+CSRF betekent: een aanvaller laat jouw browser een actie uitvoeren op een server
+waar je ingelogd bent, doordat de browser **automatisch** je cookie meestuurt.
 
-Deze site heeft geen enkele POST-route en zet geen enkele cookie. Er is niets te
-vervalsen. Een CSRF-token toevoegen zou een token zijn die nergens naartoe gaat
-en door niemand gecontroleerd wordt.
+Dat kan hier niet, want er is geen cookie en geen sessie. Wie mag spelen wordt
+bepaald door een token dat de app expliciet meestuurt bij een zet, en dat in
+`localStorage` staat. `localStorage` wordt nooit vanzelf meegestuurd, en een
+andere site kan er niet aan (same-origin policy). Er valt dus niets te
+vervalsen.
 
-### Supabase RLS — niet van toepassing
-
-Er is geen Supabase en geen database, dus er zijn geen tabellen, rollen of
-policies.
+Zou je later een backoffice met login toevoegen (zie onderaan), dan komt er wél
+een sessiecookie en is CSRF-bescherming wél nodig.
 
 ### Wachtwoorden, bcrypt, sessies, cookies — niet van toepassing
 
@@ -261,23 +313,24 @@ De slide **"Security bij eindopdracht"** eist vier dingen verplicht:
 - CSRF moet geïmplementeerd zijn
 - RLS moet correct enabled zijn
 
-**Drie van die vier kan je op een statische site niet aantonen**, simpelweg omdat
-er geen database en geen server is. Enkel XSS is hier van toepassing, en dat zit
-goed.
+Met het online spelen erbij staat het er zo voor:
 
-Als dit spel je eindopdracht moet worden, heb je dus een back-end nodig: Express
-met een Supabase-database erachter. Dat is niet alleen een formaliteit — er zijn
-echte functies die zo'n back-end zouden rechtvaardigen:
+| | |
+|---|---|
+| SQL Injection | **Afgedekt** — geparametriseerde RPC, nergens samengeplakte queries |
+| XSS | **Afgedekt** — geen `innerHTML`, alles via `textContent` |
+| RLS | **Afgedekt** — aan op beide tabellen, `game_tokens` zonder enkele policy |
+| CSRF | **Niet van toepassing** — geen cookies, dus niets te vervalsen |
 
-- **Multiplayer** — twee spelers op verschillende toestellen in hetzelfde potje
-- **Een klassement** — nu staat je record alleen in je eigen browser
-- **Een backoffice** — spelers en correcties beheren via een scherm in plaats van
-  via `tools/overrides.json`, met een login erop
+Voor het laatste punt heb je een **login met een sessiecookie** nodig, en dan
+volgt CSRF-bescherming er vanzelf uit. De natuurlijke plek daarvoor is een
+**backoffice**: een scherm waar jij spelers en correcties beheert in plaats van
+`tools/overrides.json` met de hand te bewerken. Dan krijg je in één keer een
+loginformulier (bcrypt), een sessie, formulieren die iets versturen (CSRF-token)
+en een tweede rol in je RLS-policies (admin mag schrijven, bezoeker niet).
 
-Met die drie krijg je vanzelf een loginformulier (bcrypt, sessies), formulieren
-die iets versturen (CSRF-token), een database met tabellen (SQL injection, RLS)
-en gebruikersgegevens (GDPR). Dan is de checklist geen kunstje meer maar volgt
-hij uit wat de app doet.
+Dat is meteen ook praktisch nuttig, dus het is geen kunstje. Zeg het als je dat
+erbij wil.
 
 ---
 

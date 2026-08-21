@@ -66,6 +66,15 @@
           <span class="mode-name">Heel België</span>
           <span class="mode-desc">Willekeurige clash: twee clubs tegen elkaar.</span>
         </button>
+
+        <button class="mode-card mode-dark" data-mode="online">
+          <span class="swatch-row">
+            <span class="swatch sw-red"></span>
+            <span class="swatch sw-green"></span>
+          </span>
+          <span class="mode-name">Samen online</span>
+          <span class="mode-desc">Nodig iemand uit met een code of een link.</span>
+        </button>
       </div>
 
       <a href="#" id="back-to-start" class="back-link">← Terug</a>
@@ -81,6 +90,53 @@
       <div id="club-grid" class="club-grid"></div>
 
       <a href="#" id="back-to-overview" class="back-link">← Terug</a>
+    </div>
+  </section>
+
+  <!-- ============ ONLINE ============ -->
+  <section id="screen-online" class="screen">
+    <div class="s-center">
+      <p class="eyebrow">Samen online</p>
+      <h1 class="mega-title mega-title-sm">Nodig iemand uit</h1>
+
+      <div id="online-unavailable" class="online-note">
+        <p><strong>Nog niet ingesteld.</strong> Online spelen heeft een
+          Supabase-project nodig. Vul <code>SUPABASE_URL</code> en
+          <code>SUPABASE_ANON_KEY</code> in <code>config.js</code> in, en draai
+          <code>supabase/schema.sql</code> in de SQL Editor van je project.</p>
+      </div>
+
+      <div id="online-setup" class="online-panel">
+        <div class="online-block">
+          <h3>Een potje starten</h3>
+          <p>Kies met welke club je speelt; je krijgt een code om te delen.</p>
+          <div id="online-club-grid" class="club-grid club-grid-sm"></div>
+        </div>
+
+        <div class="online-block">
+          <h3>Of doe mee met een code</h3>
+          <div class="online-join">
+            <input id="online-code" type="text" placeholder="ESSV-XXXXX"
+                   autocomplete="off" spellcheck="false" maxlength="16" />
+            <button id="online-join" class="btn btn-primary">Meedoen</button>
+          </div>
+        </div>
+
+        <div id="online-feedback" class="feedback"></div>
+      </div>
+
+      <div id="online-waiting" class="online-panel">
+        <h3>Wachten op je tegenstander</h3>
+        <p class="online-code-label">Deel deze code:</p>
+        <p id="online-code-shown" class="online-code">—</p>
+        <div class="online-join">
+          <input id="online-link" type="text" readonly />
+          <button id="online-copy" class="btn btn-primary">Kopieer link</button>
+        </div>
+        <p id="online-copy-note" class="feedback"></p>
+      </div>
+
+      <a href="#" id="back-to-overview-2" class="back-link">← Terug</a>
     </div>
   </section>
 
@@ -135,6 +191,9 @@
     </div>
   </div>
 
+  <script src="config.js"></script>
+  <script src="vendor/supabase.js"></script>
+  <script src="online.js"></script>
   <script src="players.js"></script>
   <script src="categories.js"></script>
   <script src="game.js"></script>

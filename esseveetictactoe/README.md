@@ -35,6 +35,27 @@ alle affiches heen; per toevallig duo bijhouden zou telkens op 0-0 springen.
 Negen pogingen voor negen vakjes. Elke gok telt, juist of fout. Hoeveel vakjes
 haal je? Je record per club blijft bewaard.
 
+### Samen online
+
+Kies **Samen online**, pik een club, en je krijgt een code (`ESSV-XXXXX`) plus
+een deelbare link. Wie die opent, doet mee vanaf zijn eigen toestel; zetten
+verschijnen live bij allebei.
+
+Dit heeft een gratis **Supabase**-project nodig:
+
+1. Maak een project aan op [supabase.com](https://supabase.com).
+2. Open de **SQL Editor** en draai [`supabase/schema.sql`](../supabase/schema.sql).
+3. Ga naar **Project Settings → Data API** en kopieer de **Project URL** en de
+   **anon public** sleutel.
+4. Zet ze in [`config.js`](config.js).
+
+Laat je `config.js` leeg, dan werkt de rest van het spel gewoon en staat alleen
+die ene knop uit.
+
+De anon-sleutel mag in de broncode staan — die is publiek bedoeld. De beveiliging
+zit in Row Level Security; zie [SECURITY.md](../SECURITY.md). Zet er **nooit** de
+`service_role`-sleutel in.
+
 ### Namen invoeren
 
 Vanaf twee letters verschijnt een **suggestielijst** met spelers uit de pool
@@ -83,6 +104,11 @@ Pure HTML/CSS/JavaScript, geen build-stap, geen dependencies.
   `bundle.js` (alles in één, voor wie de pagina vanaf schijf opent)
 - `categories.js` — criteria die rijen/kolommen kunnen zijn
 - `game.js` — rastergeneratie, naamherkenning en spellogica
+- `config.js` — Supabase-instellingen voor online spelen (leeg = uit)
+- `online.js` — praat met Supabase: potje maken, meedoen, zetten, live updates
+- `vendor/supabase.js` — de officiële Supabase-client, lokaal opgeslagen zodat
+  het CSP geen scripts van externe hosts hoeft toe te laten
+- `../supabase/schema.sql` — tabellen, RLS-policies en de functies
 - `tools/build_players.py` — genereert `data/` uit Wikidata
 - `tools/test.js` — headless test (`node tools/test.js`)
 

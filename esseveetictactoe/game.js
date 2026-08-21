@@ -186,6 +186,8 @@ const state = {
   stuck: false,    // geeindigd omdat geen enkel open vakje nog oplosbaar was
   playable: true,  // false als er geen oplosbaar raster gemaakt kon worden
   score: { X: 0, O: 0, draw: 0 },
+  online: false,     // potje via Supabase, tegen iemand op een ander toestel
+  seat: null,        // welke speler zijn wij online: "X" of "O"
   solo: false,       // in je eentje: negen pogingen voor negen vakjes
   guessesLeft: 0,
   best: 0,           // beste aantal vakjes ooit met deze club(s)
@@ -340,6 +342,79 @@ function maxYear(a, b) {
   return Math.max(a, b);
 }
 
+/* ---------- Online potjes ---------- */
+
+/*
+ * Een online potje wordt niet lokaal gegenereerd: het raster staat in de
+ * database. Wij halen de rosters van de juiste club(s) op en zoeken de zes
+ * criteria terug op hun id, zodat beide spelers exact hetzelfde bord zien.
+ */
+async function startOnlineGame(record) {
+  state.online = true;
+  state.solo = false;
+  state.seat = ONLINE.seat;
+  state.mode = "online";
+  state.clubIds = record.club_ids;
+
+  const info = headerInfoFor(record.club_ids.length === 1 ? "club" : "belgium",
+                             record.club_ids);
+  applyTheme(info.colors);
+  $("#game-eyebrow").textContent = "Samen online · " + ONLINE.code;
+  $("#game-title").textContent = info.title;
+  renderGameKits(record.club_ids);
+  showScreen("game");
+
+  await loadRosters(record.club_ids);
+  state.players = record.club_ids.length === 1
+    ? rosterFor(record.club_ids[0])
+    : dedupePlayers(record.club_ids.flatMap(withOwnClub));
+
+  const rows = categoriesByIds(state.players, record.row_ids);
+  const cols = categoriesByIds(state.players, record.col_ids);
+  if (!rows || !cols) {
+    state.playable = false;
+    render();
+    return;
+  }
+  state.rows = rows;
+  state.cols = cols;
+  state.playable = true;
+  state.score = { X: 0, O: 0, draw: 0 };
+
+  ONLINE.onUpdate = applyRemoteGame;
+  applyRemoteGame(record);
+}
+
+// Toestand uit de database overnemen. Dit is de enige plek waar het bord
+// verandert tijdens een online potje — ook onze eigen zet komt zo terug.
+function applyRemoteGame(record) {
+  if (!state.online) return;
+  state.board = (record.board || []).map((cell) =>
+    cell && typeof cell === "object" && typeof cell.name === "string"
+      ? { player: cell.player === "O" ? "O" : "X", name: cell.name }
+      : null);
+  while (state.board.length < 9) state.board.push(null);
+
+  state.usedNames = new Set(state.board.filter(Boolean).map((c) => c.name));
+  state.current = record.turn === "O" ? "O" : "X";
+  state.finished = Boolean(record.finished);
+  state.winner = record.winner || null;
+  state.opponentJoined = Boolean(record.joined);
+  render();
+
+  // Wie als eerste ziet dat het potje beslist is, legt de uitslag vast.
+  if (!state.finished) {
+    const res = checkWinner();
+    const winner = res ? res.player : (gameStuck() ? leader() : null);
+    if (winner) onlineFinish(winner).catch(() => { /* de ander doet het wel */ });
+  }
+}
+
+// Mogen wij nu iets doen?
+function myTurn() {
+  return !state.online || (state.seat === state.current && state.opponentJoined);
+}
+
 function newGame() {
   const grid = generateGrid(state.players);
   state.board = new Array(9).fill(null);
@@ -490,6 +565,15 @@ function renderScoreboard() {
       scoreBox("score-o", "Record", state.best));
     return;
   }
+  if (state.online) {
+    replaceChildren(board,
+      scoreBox("score-x", "X", state.board.filter((c) => c && c.player === "X").length,
+               state.seat === "X" ? "Jij" : "Tegenstander", true),
+      scoreBox("score-draw", "Vakjes", filledCells() + "/9"),
+      scoreBox("score-o", "O", state.board.filter((c) => c && c.player === "O").length,
+               state.seat === "O" ? "Jij" : "Tegenstander", true));
+    return;
+  }
   replaceChildren(board,
     scoreBox("score-x", "X", state.score.X, "Speler 1", true),
     scoreBox("score-draw", "Gelijk", state.score.draw),
@@ -535,7 +619,7 @@ function render() {
         (cell ? " claimed " + (cell.player === "X" ? "x" : "o") : ""));
       btn.type = "button";
       btn.dataset.idx = String(idx);
-      btn.disabled = Boolean(cell) || state.finished;
+      btn.disabled = Boolean(cell) || state.finished || !myTurn();
 
       if (cell) {
         btn.appendChild(el("span", "mark", state.solo ? "✓" : cell.player));
@@ -575,6 +659,14 @@ function render() {
       ? el("span", "badge draw", "Gelijkspel!" + stuck)
       : el("span", "badge win-" + mark(state.winner),
            `Speler ${state.winner} wint!${stuck}`));
+  } else if (state.online) {
+    if (!state.opponentJoined) {
+      replaceChildren(turnEl, el("span", "badge draw", "Wachten op je tegenstander…"));
+    } else {
+      replaceChildren(turnEl,
+        el("span", "badge turn-" + mark(state.current),
+           myTurn() ? "Jij bent aan zet" : "Tegenstander is aan zet"));
+    }
   } else {
     replaceChildren(turnEl, document.createTextNode("Beurt: "),
       el("span", "badge turn-" + mark(state.current), "Speler " + state.current));
@@ -646,6 +738,7 @@ function pickSuggestion(i) {
 
 function openGuess(idx) {
   if (state.finished || state.board[idx]) return;
+  if (!myTurn()) return;
   activeIdx = idx;
   const r = Math.floor(idx / 3);
   const c = idx % 3;
@@ -709,11 +802,31 @@ function submitGuess() {
       ? "Onbekende speler — poging kwijt."
       : "Onbekende speler — check de spelling of probeer een andere naam.";
     fb.className = "feedback bad";
-    passTurnAfterWrong();
+    if (state.online) {
+      onlineMove(idx, null).then(() => setTimeout(closeGuess, 900)).catch(() => {});
+    } else {
+      passTurnAfterWrong();
+    }
     return;
   }
 
   const valid = allowed.some((p) => p.name === match.name);
+
+  // Online: niet zelf het bord aanpassen, maar de zet doorsturen. De database
+  // beslist of hij mag; het resultaat komt via Realtime terug bij allebei.
+  if (state.online) {
+    fb.textContent = valid ? `✔ Juist! ${match.name} telt.`
+                           : `✖ ${match.name} voldoet niet aan dit vakje.`;
+    fb.className = valid ? "feedback good" : "feedback bad";
+    onlineMove(idx, valid ? match.name : null)
+      .then(() => setTimeout(closeGuess, valid ? 650 : 900))
+      .catch((err) => {
+        fb.textContent = "Zet geweigerd: " + err.message;
+        fb.className = "feedback bad";
+      });
+    return;
+  }
+
   if (valid) {
     // Vakje geclaimd door huidige speler
     state.board[idx] = { player: state.current, name: match.name };
@@ -885,6 +998,82 @@ function renderGameKits(clubIds) {
     .forEach((club) => box.appendChild(clubKit(club, 56)));
 }
 
+/* ---------- Online-scherm ---------- */
+
+function showOnlineScreen() {
+  const setup = $("#online-setup");
+  const waiting = $("#online-waiting");
+  const unavailable = $("#online-unavailable");
+
+  unavailable.style.display = ONLINE_ENABLED ? "none" : "";
+  setup.style.display = ONLINE_ENABLED ? "" : "none";
+  waiting.style.display = "none";
+  $("#online-feedback").textContent = "";
+
+  if (ONLINE_ENABLED) renderOnlineClubGrid();
+  showScreen("online");
+}
+
+// Zelfde clubkaarten als bij "Ploegen België", maar ze starten een online potje.
+function renderOnlineClubGrid() {
+  const grid = clear($("#online-club-grid"));
+  CLUBS.forEach((club) => {
+    const card = el("button", "club-card");
+    card.type = "button";
+    card.dataset.club = club.id;
+    card.appendChild(clubKit(club, 34));
+    card.appendChild(el("span", "club-name", club.name));
+    grid.appendChild(card);
+  });
+}
+
+function onlineFeedback(text, ok) {
+  const fb = $("#online-feedback");
+  fb.textContent = text;
+  fb.className = "feedback" + (text ? (ok ? " good" : " bad") : "");
+}
+
+/*
+ * Een potje aanmaken: wij genereren het raster (met de gewone generator), en
+ * sturen alleen de id's van de zes criteria mee. De tegenstander bouwt daar
+ * hetzelfde bord uit op.
+ */
+async function createOnlineGame(clubId, wantedCode) {
+  onlineFeedback("Potje aanmaken…", true);
+  try {
+    await loadRosters([clubId]);
+    const players = rosterFor(clubId);
+    const grid = generateGrid(players);
+    if (!grid) throw new Error("Geen speelbaar raster voor deze club.");
+
+    const record = await onlineCreate([clubId],
+      grid.rows.map((c) => c.id), grid.cols.map((c) => c.id), wantedCode);
+
+    $("#online-code-shown").textContent = ONLINE.code;
+    $("#online-link").value = onlineShareUrl(ONLINE.code);
+    $("#online-setup").style.display = "none";
+    $("#online-waiting").style.display = "";
+    $("#online-copy-note").textContent = "";
+
+    // Zodra de tegenstander meedoet, springen we naar het bord.
+    ONLINE.onUpdate = (rec) => { if (rec.joined) startOnlineGame(rec); };
+    await startOnlineGame(record);
+    showScreen("online");   // eerst nog het wachtscherm tonen
+  } catch (err) {
+    onlineFeedback(err.message, false);
+  }
+}
+
+async function joinOnlineGame(code) {
+  onlineFeedback("Meedoen…", true);
+  try {
+    const record = await onlineJoin(code);
+    await startOnlineGame(record);
+  } catch (err) {
+    onlineFeedback(err.message, false);
+  }
+}
+
 /* ---------- Event-koppeling ---------- */
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -902,6 +1091,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         startGame("essevee", ["zulte-waregem"]);
       } else if (mode === "club") {
         showScreen("clubs");
+      } else if (mode === "online") {
+        showOnlineScreen();
       } else if (mode === "belgium") {
         const shuffled = shuffle(CLUBS.map((c) => c.id));
         startGame("belgium", [shuffled[0], shuffled[1]]);
@@ -916,6 +1107,41 @@ document.addEventListener("DOMContentLoaded", async () => {
     startGame("club", [btn.dataset.club]);
   });
   $("#back-to-overview").addEventListener("click", (e) => { e.preventDefault(); showScreen("overview"); });
+  $("#back-to-overview-2").addEventListener("click", (e) => {
+    e.preventDefault();
+    onlineLeave();
+    state.online = false;
+    showScreen("overview");
+  });
+
+  $("#online-club-grid").addEventListener("click", (e) => {
+    const btn = e.target.closest(".club-card");
+    if (btn) createOnlineGame(btn.dataset.club);
+  });
+  $("#online-join").addEventListener("click", () => joinOnlineGame($("#online-code").value));
+  $("#online-code").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") joinOnlineGame($("#online-code").value);
+  });
+  // Tabblad weer actief? Meteen de laatste stand ophalen — tijdens het slapen
+  // kunnen er berichten gemist zijn.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && state.online && ONLINE.code) {
+      onlineRefresh().then((rec) => rec && applyRemoteGame(rec)).catch(() => {});
+    }
+  });
+
+  $("#online-copy").addEventListener("click", async () => {
+    const note = $("#online-copy-note");
+    try {
+      await navigator.clipboard.writeText($("#online-link").value);
+      note.textContent = "Link gekopieerd.";
+      note.className = "feedback good";
+    } catch (err) {
+      $("#online-link").select();
+      note.textContent = "Kopiëren lukte niet — selecteer de link en kopieer hem zelf.";
+      note.className = "feedback bad";
+    }
+  });
 
   // Spelscherm
   state.solo = loadSolo();
@@ -965,5 +1191,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderClubGrid();
   } catch (err) {
     showLoadError(err);
+    return;
+  }
+
+  // Binnengekomen via een uitnodigingslink? Dan meteen meedoen.
+  const invite = ONLINE_ENABLED ? onlineCodeFromUrl() : null;
+  if (invite) {
+    showOnlineScreen();
+    $("#online-code").value = invite;
+    joinOnlineGame(invite);
   }
 });

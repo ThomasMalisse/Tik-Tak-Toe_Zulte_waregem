@@ -79,6 +79,21 @@ function playedInDecade(p, decade) {
   return from <= decade + 9 && to >= decade;
 }
 
+/*
+ * Categorieën terugzoeken op hun id, in de gegeven volgorde.
+ *
+ * Nodig voor online potjes: de database bewaart alleen de id's van de zes
+ * criteria ("pos:GK", "club:KAA Gent", "era:2010"). Beide browsers bouwen
+ * daaruit hetzelfde raster op uit hun eigen spelersdata. Ontbreekt er één,
+ * dan geven we null terug — dan lopen de databases van beide spelers uiteen
+ * en heeft doorspelen geen zin.
+ */
+function categoriesByIds(players, ids) {
+  const byId = new Map(buildCategories(players).map((c) => [c.id, c]));
+  const found = ids.map((id) => byId.get(id) || null);
+  return found.every(Boolean) ? found : null;
+}
+
 /* Spelers uit een pool die aan een categorie voldoen. */
 function playersForCategory(cat, players) {
   return players.filter((p) => cat.test(p));
