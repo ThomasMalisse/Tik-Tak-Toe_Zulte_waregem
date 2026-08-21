@@ -93,37 +93,17 @@
         <h1 id="game-title" class="mega-title mega-title-game">—</h1>
       </header>
 
-      <div class="scoreboard">
-        <div class="score-box score-x">
-          <span class="score-mark">X</span>
-          <span class="score-num" id="score-x">0</span>
-          <span class="score-label">Speler 1</span>
-        </div>
-        <div class="score-box score-draw">
-          <span class="score-label-top">Gelijk</span>
-          <span class="score-num" id="score-draw">0</span>
-        </div>
-        <div class="score-box score-o">
-          <span class="score-mark">O</span>
-          <span class="score-num" id="score-o">0</span>
-          <span class="score-label">Speler 2</span>
-        </div>
-      </div>
+      <div id="scoreboard" class="scoreboard"></div>
 
       <div id="turn" class="turn"></div>
 
       <div id="board-wrap"></div>
 
       <div class="controls">
-        <button id="new-game" class="btn btn-primary">🔄 Nieuw potje</button>
-        <button id="reset-score" class="btn btn-ghost">♻️ Reset</button>
-        <button id="switch-team" class="btn btn-ghost">🔁 Ploeg wisselen</button>
-        <button id="toggle-players" class="btn btn-ghost">👥 Wie zit in de database?</button>
-      </div>
-
-      <div id="players-panel" class="players-panel">
-        <p class="panel-note">Deze pool bevat <strong id="player-count">0</strong> (oud-)spelers. Namen worden soepel herkend (bv. enkel de achternaam volstaat).</p>
-        <ul id="player-list" class="player-list"></ul>
+        <button id="new-game" class="btn btn-primary">Nieuw potje</button>
+        <button id="toggle-solo" class="btn btn-ghost">Solo</button>
+        <button id="reset-score" class="btn btn-ghost">Reset</button>
+        <button id="switch-team" class="btn btn-ghost">Terug naar overzicht</button>
       </div>
 
       <footer class="site-foot">
@@ -132,14 +112,22 @@
     </div>
   </section>
 
+  <!-- Melding als de spelersdata niet geladen raakt -->
+  <div id="load-error" class="load-error"></div>
+
   <!-- Gok-venster -->
   <div id="modal" class="modal">
     <div class="modal-box">
       <h3 id="modal-title">—</h3>
       <p id="modal-sub" class="modal-sub">—</p>
-      <input id="guess-input" type="text" placeholder="Naam van de speler…" autocomplete="off" spellcheck="false" />
+      <div class="autocomplete">
+        <input id="guess-input" type="text" placeholder="Naam van de speler…" autocomplete="off" spellcheck="false" />
+        <ul id="guess-suggestions" class="suggestions" role="listbox"></ul>
+      </div>
       <div id="guess-feedback" class="feedback"></div>
       <div class="modal-actions">
+        <button id="guess-hint" class="btn btn-ghost btn-hint">Hint</button>
+        <span class="spacer"></span>
         <button id="guess-cancel" class="btn btn-ghost">Annuleren</button>
         <button id="guess-submit" class="btn btn-primary">Bevestig</button>
       </div>

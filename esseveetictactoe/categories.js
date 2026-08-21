@@ -8,6 +8,8 @@
  * van twee clubs bij "Heel België"), in plaats van één vaste database.
  */
 
+const DECADES = [1960, 1970, 1980, 1990, 2000, 2010, 2020];
+
 const POSITION_LABELS = {
   GK:  "Doelman",
   DEF: "Verdediger",
@@ -50,7 +52,31 @@ function buildCategories(players) {
     });
   });
 
+  // Tijdvak-criteria ("speelde er in de jaren ...") — dit maakt het verschil
+  // tussen de oude garde en de huidige kern.
+  DECADES.forEach((decade) => {
+    if (!players.some((p) => playedInDecade(p, decade))) return;
+    cats.push({
+      id: "era:" + decade,
+      label: "Jaren " + decade,
+      kind: "era",
+      test: (p) => playedInDecade(p, decade),
+    });
+  });
+
   return cats;
+}
+
+/*
+ * Speelde deze speler ergens in het decennium dat op `decade` start?
+ * from/to zijn de jaren bij de club waarvoor de pool gemaakt is; ze mogen
+ * null zijn (onbekend bij Wikidata) — dan telt de speler niet mee.
+ */
+function playedInDecade(p, decade) {
+  const from = p.from != null ? p.from : p.to;
+  const to = p.to != null ? p.to : p.from;
+  if (from == null || to == null) return false;
+  return from <= decade + 9 && to >= decade;
 }
 
 /* Spelers uit een pool die aan een categorie voldoen. */

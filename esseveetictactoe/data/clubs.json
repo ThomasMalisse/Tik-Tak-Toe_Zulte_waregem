@@ -1,0 +1,130 @@
+[
+ {
+  "id": "zulte-waregem",
+  "name": "Zulte Waregem",
+  "colors": [
+   "#d81f2a",
+   "#1a7a3c"
+  ]
+ },
+ {
+  "id": "club-brugge",
+  "name": "Club Brugge",
+  "colors": [
+   "#0f56a3",
+   "#111111"
+  ]
+ },
+ {
+  "id": "anderlecht",
+  "name": "Anderlecht",
+  "colors": [
+   "#6f2c91",
+   "#f0b90b"
+  ]
+ },
+ {
+  "id": "krc-genk",
+  "name": "KRC Genk",
+  "colors": [
+   "#0c3f91",
+   "#4fb8e8"
+  ]
+ },
+ {
+  "id": "standard",
+  "name": "Standard Luik",
+  "colors": [
+   "#d81f2a",
+   "#111111"
+  ]
+ },
+ {
+  "id": "antwerp",
+  "name": "Royal Antwerp",
+  "colors": [
+   "#a3121a",
+   "#111111"
+  ]
+ },
+ {
+  "id": "kaa-gent",
+  "name": "KAA Gent",
+  "colors": [
+   "#0c3f91",
+   "#111111"
+  ]
+ },
+ {
+  "id": "charleroi",
+  "name": "Charleroi",
+  "colors": [
+   "#111111",
+   "#c8102e"
+  ]
+ },
+ {
+  "id": "cercle-brugge",
+  "name": "Cercle Brugge",
+  "colors": [
+   "#1a7a3c",
+   "#111111"
+  ]
+ },
+ {
+  "id": "union-sg",
+  "name": "Union SG",
+  "colors": [
+   "#f0b90b",
+   "#0c3f91"
+  ]
+ },
+ {
+  "id": "stvv",
+  "name": "STVV",
+  "colors": [
+   "#f0d80b",
+   "#111111"
+  ]
+ },
+ {
+  "id": "westerlo",
+  "name": "KV Westerlo",
+  "colors": [
+   "#f0b90b",
+   "#0c3f91"
+  ]
+ },
+ {
+  "id": "mechelen",
+  "name": "KV Mechelen",
+  "colors": [
+   "#f0d80b",
+   "#c8102e"
+  ]
+ },
+ {
+  "id": "ohl",
+  "name": "OH Leuven",
+  "colors": [
+   "#0c3f91",
+   "#111111"
+  ]
+ },
+ {
+  "id": "raal",
+  "name": "RAAL La Louvière",
+  "colors": [
+   "#c8102e",
+   "#f0b90b"
+  ]
+ },
+ {
+  "id": "dender",
+  "name": "FCV Dender",
+  "colors": [
+   "#f0913a",
+   "#111111"
+  ]
+ }
+]

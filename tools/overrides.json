@@ -1,0 +1,44 @@
+{
+  "_lees_dit": [
+    "Handmatige correcties op de Wikidata-gegevens. Dit bestand wordt NIET",
+    "gegenereerd — pas het gerust aan en draai daarna build_players.py opnieuw.",
+    "Het draait volledig uit de cache, dus dat duurt maar enkele seconden.",
+    "",
+    "positions : zet de positie van een speler recht. Wikidata kent maar vier",
+    "            grove waarden (keeper/verdediger/middenvelder/aanvaller) en een",
+    "            vleugelspeler belandt daar willekeurig bij middenvelder of",
+    "            aanvaller. Sleutel = exacte naam, waarde = GK, DEF, MID of FWD.",
+    "",
+    "extra     : spelers die Wikidata niet bij een club heeft staan. Per club-id",
+    "            een lijst. 'to' mag null zijn als hij er nog speelt.",
+    "            De club wordt automatisch toegevoegd aan zijn 'ook bij'-lijst",
+    "            in de rosters van zijn andere clubs.",
+    "",
+    "remove    : namen die per club uit de lijst moeten (verkeerde speler,",
+    "            nooit voor die ploeg gespeeld).",
+    "",
+    "Namen die nergens op passen worden bij het genereren gemeld, zodat een",
+    "correctie die niet meer nodig is niet stilletjes blijft staan."
+  ],
+
+  "positions": {
+    "Thorgan Hazard": "FWD",
+    "Theo Bongonda": "FWD",
+    "Robbe Decostere": "DEF"
+  },
+
+  "extra": {
+    "zulte-waregem": [
+      {
+        "name": "Jelle Vossen",
+        "pos": "FWD",
+        "nat": "België",
+        "from": 2020,
+        "to": null,
+        "clubs": ["KRC Genk", "Club Brugge", "Cercle Brugge"]
+      }
+    ]
+  },
+
+  "remove": {}
+}
